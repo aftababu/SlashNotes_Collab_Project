@@ -102,7 +102,7 @@ pub struct AppConfig {
     pub notes_folder: Option<String>,
 }
 
-// Per-folder settings (stored in .scratch/settings.json within notes folder)
+// Per-folder settings (stored in .slashnote/settings.json within notes folder)
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Settings {
     pub theme: ThemeSettings,
@@ -332,7 +332,7 @@ impl SearchIndex {
 // App state with improved structure
 pub struct AppState {
     pub app_config: RwLock<AppConfig>,  // notes_folder path (stored in app data)
-    pub settings: RwLock<Settings>,      // per-folder settings (stored in .scratch/)
+    pub settings: RwLock<Settings>,      // per-folder settings (stored in .slashnote/)
     pub notes_cache: RwLock<HashMap<String, NoteMetadata>>,
     pub file_watcher: Mutex<Option<FileWatcherState>>,
     pub search_index: Mutex<Option<SearchIndex>>,
@@ -597,7 +597,7 @@ fn strip_markdown(text: &str) -> String {
 }
 
 /// Directories to exclude from note discovery and ID resolution (app-internal, always excluded).
-const EXCLUDED_DIRS: &[&str] = &[".git", ".scratch", ".obsidian", ".trash", "assets"];
+const EXCLUDED_DIRS: &[&str] = &[".git", ".slashnote", ".obsidian", ".trash", "assets"];
 
 /// Default user-configurable directories to ignore (common build/dependency folders).
 const DEFAULT_IGNORED_DIRS: &[&str] = &[
@@ -715,11 +715,11 @@ fn get_app_config_path(app: &AppHandle) -> Result<PathBuf> {
     Ok(app_data.join("config.json"))
 }
 
-// Get per-folder settings file path (in .scratch/ within notes folder)
+// Get per-folder settings file path (in .slashnote/ within notes folder)
 fn get_settings_path(notes_folder: &str) -> PathBuf {
-    let scratch_dir = PathBuf::from(notes_folder).join(".scratch");
-    std::fs::create_dir_all(&scratch_dir).ok();
-    scratch_dir.join("settings.json")
+    let slashnote_dir = PathBuf::from(notes_folder).join(".slashnote");
+    std::fs::create_dir_all(&slashnote_dir).ok();
+    slashnote_dir.join("settings.json")
 }
 
 // Get search index path
@@ -816,12 +816,12 @@ fn initialize_notes_folder(app: &AppHandle, path_buf: &PathBuf, state: &AppState
     let assets = path_buf.join("assets");
     std::fs::create_dir_all(&assets).map_err(|e| e.to_string())?;
 
-    // Create .scratch config folder
-    let scratch_dir = path_buf.join(".scratch");
-    std::fs::create_dir_all(&scratch_dir).map_err(|e| e.to_string())?;
+    // Create .slashnote config folder
+    let slashnote_dir = path_buf.join(".slashnote");
+    std::fs::create_dir_all(&slashnote_dir).map_err(|e| e.to_string())?;
 
     // Verify write access early to avoid later silent failures
-    let write_test_path = scratch_dir.join(".write-test");
+    let write_test_path = slashnote_dir.join(".write-test");
     std::fs::write(&write_test_path, b"ok")
         .map_err(|e| format!("Notes folder is not writable: {}", e))?;
     let _ = std::fs::remove_file(&write_test_path);
@@ -1275,7 +1275,7 @@ async fn create_note(target_folder: Option<String>, state: State<'_, AppState>) 
 }
 
 /// Validate a relative folder path against traversal attacks
-const RESERVED_FOLDER_NAMES: &[&str] = &[".git", ".scratch", ".obsidian", ".trash", "assets"];
+const RESERVED_FOLDER_NAMES: &[&str] = &[".git", ".slashnote", ".obsidian", ".trash", "assets"];
 
 fn validate_folder_path(path: &str) -> Result<(), String> {
     if path.contains('\\') {
@@ -2674,6 +2674,52 @@ async fn git_add_remote(url: String, state: State<'_, AppState>) -> Result<git::
 }
 
 #[tauri::command]
+async fn git_set_remote_url(url: String, state: State<'_, AppState>) -> Result<git::GitResult, String> {
+    let folder = {
+        let app_config = state.app_config.read().expect("app_config read lock");
+        app_config.notes_folder.clone()
+    };
+
+    match folder {
+        Some(path) => {
+            tauri::async_runtime::spawn_blocking(move || {
+                git::set_remote_url(&PathBuf::from(path), &url)
+            })
+            .await
+            .map_err(|e| e.to_string())
+        }
+        None => Ok(git::GitResult {
+            success: false,
+            message: None,
+            error: Some("Notes folder not set".to_string()),
+        }),
+    }
+}
+
+#[tauri::command]
+async fn git_remove_remote(state: State<'_, AppState>) -> Result<git::GitResult, String> {
+    let folder = {
+        let app_config = state.app_config.read().expect("app_config read lock");
+        app_config.notes_folder.clone()
+    };
+
+    match folder {
+        Some(path) => {
+            tauri::async_runtime::spawn_blocking(move || {
+                git::remove_remote(&PathBuf::from(path))
+            })
+            .await
+            .map_err(|e| e.to_string())
+        }
+        None => Ok(git::GitResult {
+            success: false,
+            message: None,
+            error: Some("Notes folder not set".to_string()),
+        }),
+    }
+}
+
+#[tauri::command]
 async fn git_push_with_upstream(state: State<'_, AppState>) -> Result<git::GitResult, String> {
     let folder = {
         let app_config = state.app_config.read().expect("app_config read lock");
@@ -2795,28 +2841,28 @@ fn check_cli_exists(command_name: &str, path: &str) -> Result<bool, String> {
     Ok(check_output.status.success())
 }
 
-/// Marker comment embedded in CLI wrapper scripts installed by Scratch.
+/// Marker comment embedded in CLI wrapper scripts installed by SlashNote.
 /// Used to identify and validate our own wrapper before modifying or removing it.
 #[cfg(target_os = "macos")]
-const SCRATCH_CLI_MARKER: &str = "# SCRATCH_CLI_WRAPPER";
+const SLASHNOTE_CLI_MARKER: &str = "# SLASHNOTE_CLI_WRAPPER";
 
 /// Returns the path where the CLI script should be installed (macOS only).
 /// Checks PATH for Homebrew bin first, then falls back to architecture detection.
-/// Apple Silicon: /opt/homebrew/bin/scratch
-/// Intel: /usr/local/bin/scratch
+/// Apple Silicon: /opt/homebrew/bin/slashnote
+/// Intel: /usr/local/bin/slashnote
 #[cfg(target_os = "macos")]
 fn cli_target_path() -> PathBuf {
     // Check if the user's PATH contains /opt/homebrew/bin (Homebrew on Apple Silicon)
     if let Ok(path_var) = std::env::var("PATH") {
         if path_var.split(':').any(|p| p == "/opt/homebrew/bin") {
-            return PathBuf::from("/opt/homebrew/bin/scratch");
+            return PathBuf::from("/opt/homebrew/bin/slashnote");
         }
     }
     // Fall back to architecture detection
     if std::env::consts::ARCH == "aarch64" {
-        return PathBuf::from("/opt/homebrew/bin/scratch");
+        return PathBuf::from("/opt/homebrew/bin/slashnote");
     }
-    PathBuf::from("/usr/local/bin/scratch")
+    PathBuf::from("/usr/local/bin/slashnote")
 }
 
 #[tauri::command]
@@ -2832,7 +2878,7 @@ fn get_cli_status() -> Result<CliStatus, String> {
         }
         // Verify this is our wrapper (has marker) and points to the current binary
         let content = std::fs::read_to_string(&target).unwrap_or_default();
-        if !content.contains(SCRATCH_CLI_MARKER) {
+        if !content.contains(SLASHNOTE_CLI_MARKER) {
             // Foreign binary at this path — don't claim it as ours
             return Ok(CliStatus { supported: true, installed: false, path: None });
         }
@@ -2870,9 +2916,9 @@ fn install_cli() -> Result<String, String> {
         if target.exists() || target.symlink_metadata().is_ok() {
             // Only remove if it's our wrapper (contains marker)
             let content = std::fs::read_to_string(&target).unwrap_or_default();
-            if !content.contains(SCRATCH_CLI_MARKER) {
+            if !content.contains(SLASHNOTE_CLI_MARKER) {
                 return Err(format!(
-                    "A different 'scratch' command already exists at {}. Remove it manually to install the Scratch CLI.",
+                    "A different 'slashnote' command already exists at {}. Remove it manually to install the SlashNote CLI.",
                     target.display()
                 ));
             }
@@ -2892,7 +2938,7 @@ fn install_cli() -> Result<String, String> {
         // the terminal is not blocked waiting for the GUI app to exit.
         let script = format!(
             "#!/bin/sh\n{}\nnohup {} \"$@\" >/dev/null 2>&1 &\n",
-            SCRATCH_CLI_MARKER,
+            SLASHNOTE_CLI_MARKER,
             escaped_exe
         );
         std::fs::write(&target, script.as_bytes())
@@ -2919,9 +2965,9 @@ fn uninstall_cli() -> Result<(), String> {
         let target = cli_target_path();
         if target.exists() || target.symlink_metadata().is_ok() {
             let content = std::fs::read_to_string(&target).unwrap_or_default();
-            if !content.contains(SCRATCH_CLI_MARKER) {
+            if !content.contains(SLASHNOTE_CLI_MARKER) {
                 return Err(format!(
-                    "File at {} was not installed by Scratch. Refusing to remove.",
+                    "File at {} was not installed by SlashNote. Refusing to remove.",
                     target.display()
                 ));
             }
@@ -3534,7 +3580,7 @@ fn create_preview_window(app: &AppHandle, file_path: &str) -> Result<(), String>
     let url = format!("index.html?mode=preview&file={}", encoded_path);
 
     let builder = WebviewWindowBuilder::new(app, &label, WebviewUrl::App(url.into()))
-        .title(format!("{} — Scratch", filename))
+        .title(format!("{} — SlashNote", filename))
         .inner_size(800.0, 600.0)
         .min_inner_size(400.0, 300.0)
         .resizable(true)
@@ -3797,6 +3843,8 @@ pub fn run() {
             git_fetch,
             git_pull,
             git_add_remote,
+            git_set_remote_url,
+            git_remove_remote,
             git_push_with_upstream,
             ai_check_claude_cli,
             ai_check_codex_cli,

@@ -1,12 +1,11 @@
 [package]
-name = "Scratch"
+name = "slashnote"
 version = "0.10.0"
 description = "An offline markdown-based notes app"
-authors = ["erictli"]
 edition = "2021"
 
 [lib]
-name = "scratch_lib"
+name = "slashnote_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

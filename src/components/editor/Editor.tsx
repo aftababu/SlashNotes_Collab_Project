@@ -68,7 +68,7 @@ import { SlashCommand } from "./SlashCommand";
 import { Wikilink, type WikilinkStorage } from "./Wikilink";
 import { WikilinkSuggestion } from "./WikilinkSuggestion";
 import { EditorWidthHandles } from "./EditorWidthHandle";
-import { ScratchBlockMath, normalizeBlockMath } from "./MathExtensions";
+import { SlashNoteBlockMath, normalizeBlockMath } from "./MathExtensions";
 import { cn } from "../../lib/utils";
 import { plainTextFromMarkdown } from "../../lib/plainText";
 import { Button, IconButton, ToolbarButton, Tooltip } from "../ui";
@@ -1117,7 +1117,7 @@ export function Editor({
       SlashCommand,
       Wikilink,
       WikilinkSuggestion,
-      ScratchBlockMath.configure({
+      SlashNoteBlockMath.configure({
         katexOptions: {
           throwOnError: false,
           displayMode: true,
@@ -2115,21 +2115,10 @@ export function Editor({
         ></div>
         <div className="flex-1 flex items-center justify-center pb-8">
           <div className="text-center text-text-muted select-none">
-            <div
-              role="img"
-              aria-label="Note"
-              className="w-42 aspect-square mx-auto mb-1"
-              style={{
-                backgroundColor: "var(--color-text)",
-                WebkitMaskImage: "url(/note-dark.png)",
-                WebkitMaskSize: "contain",
-                WebkitMaskRepeat: "no-repeat",
-                WebkitMaskPosition: "center",
-                maskImage: "url(/note-dark.png)",
-                maskSize: "contain",
-                maskRepeat: "no-repeat",
-                maskPosition: "center",
-              }}
+            <img
+              src="/SlashNote.png"
+              alt="SlashNote"
+              className="w-42 aspect-square mx-auto mb-1 opacity-40"
             />
             <h1 className="text-2xl text-text font-serif mb-1 tracking-[-0.01em] ">
               What's on your mind?

@@ -70,7 +70,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: v__VERSION__
-          releaseName: "Scratch v__VERSION__"
+          releaseName: "SlashNote v__VERSION__"
           releaseBody: "See the release page for full details. Download the app for your platform below."
           releaseDraft: true
           prerelease: false

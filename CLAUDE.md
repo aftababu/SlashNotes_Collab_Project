@@ -1,8 +1,8 @@
-# Scratch - Development Guide
+# SlashNote - Development Guide
 
 ## Project Overview
 
-Scratch is a cross-platform markdown note-taking app for macOS, Windows, and Linux, built with Tauri v2 (Rust backend) + React/TypeScript/Tailwind (frontend) + TipTap (WYSIWYG editor) + Tantivy (full-text search).
+SlashNote is a cross-platform markdown note-taking app for macOS, Windows, and Linux, built with Tauri v2 (Rust backend) + React/TypeScript/Tailwind (frontend) + TipTap (WYSIWYG editor) + Tantivy (full-text search).
 
 ## Commands
 
@@ -21,7 +21,7 @@ Runs on every push to `main` and on PRs. Validates frontend build (`tsc` + Vite)
 
 - All backend operations go through Tauri commands in `src-tauri/src/lib.rs`. Frontend calls them via `invoke()` from `@tauri-apps/api/core`.
 - `NotesContext` uses a dual context pattern (data/actions separated) for performance.
-- Settings live in two places: app config at `{APP_DATA}/config.json`, per-folder settings at `{NOTES_FOLDER}/.scratch/settings.json`.
+- Settings live in two places: app config at `{APP_DATA}/config.json`, per-folder settings at `{NOTES_FOLDER}/.slashnote/settings.json`.
 - Tauri v2 permissions go in `src-tauri/capabilities/default.json`.
 
 ## Coding Conventions

@@ -8,7 +8,7 @@ export function normalizeBlockMath(value: string): string {
   return (match?.[1] ?? trimmed).trim();
 }
 
-export const ScratchBlockMath = BlockMath.extend({
+export const SlashNoteBlockMath = BlockMath.extend({
   addInputRules() {
     return [
       new InputRule({

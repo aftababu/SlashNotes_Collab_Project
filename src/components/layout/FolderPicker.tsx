@@ -17,7 +17,7 @@ export function FolderPicker() {
 
       if (selected && typeof selected === "string") {
         await setNotesFolder(selected);
-        // Reload theme/font settings from the new folder's .scratch/settings.json
+        // Reload theme/font settings from the new folder's .slashnote/settings.json
         await reloadSettings();
       }
     } catch (err) {
@@ -32,35 +32,24 @@ export function FolderPicker() {
 
       <div className="flex-1 flex items-center justify-center">
         <div className="text-center p-8 max-w-lg select-none">
-          <div
-            role="img"
-            aria-label="Folders"
+          <img
+            src="/SlashNote.png"
+            alt="SlashNote"
             className="w-48 aspect-square mx-auto mb-2 opacity-40 animate-fade-in-up"
-            style={{
-              animationDelay: "0ms",
-              backgroundColor: "var(--color-text)",
-              WebkitMaskImage: "url(/folders-dark.png)",
-              WebkitMaskSize: "contain",
-              WebkitMaskRepeat: "no-repeat",
-              WebkitMaskPosition: "center",
-              maskImage: "url(/folders-dark.png)",
-              maskSize: "contain",
-              maskRepeat: "no-repeat",
-              maskPosition: "center",
-            }}
+            style={{ animationDelay: "0ms" }}
           />
 
           <h1
             className="text-3xl text-text font-serif mb-2 tracking-[-0.01em] animate-fade-in-up"
             style={{ animationDelay: "100ms" }}
           >
-            Welcome to Scratch
+            Welcome to SlashNote
           </h1>
           <p
             className="text-text-muted mb-6 animate-fade-in-up"
             style={{ animationDelay: "100ms" }}
           >
-            Scratch is an offline-first notes app. Your notes are simply stored
+            SlashNote is an offline-first notes app. Your notes are simply stored
             on your computer as markdown files.
           </p>
           <div

@@ -1,10 +1,9 @@
 import { useState, useEffect } from "react";
 import { getVersion } from "@tauri-apps/api/app";
-import { invoke } from "@tauri-apps/api/core";
 import { toast } from "sonner";
 import { showUpdateToast } from "../../App";
 import { Button } from "../ui";
-import { RefreshCwIcon, SpinnerIcon, GithubIcon } from "../icons";
+import { RefreshCwIcon, SpinnerIcon } from "../icons";
 
 export function AboutSettingsSection() {
   const [appVersion, setAppVersion] = useState<string>("");
@@ -27,22 +26,13 @@ export function AboutSettingsSection() {
     }
   };
 
-  const handleOpenUrl = async (url: string) => {
-    try {
-      await invoke("open_url_safe", { url });
-    } catch (err) {
-      console.error("Failed to open URL:", err);
-      toast.error(err instanceof Error ? err.message : "Failed to open URL");
-    }
-  };
-
   return (
     <div className="space-y-8 py-8">
       {/* Version */}
       <section className="pb-2">
         <h2 className="text-xl font-medium mb-0.5">Version</h2>
         <p className="text-sm text-text-muted mb-4">
-          You are currently using Scratch v{appVersion || "..."}
+          You are currently using SlashNote v{appVersion || "..."}
         </p>
         <Button
           onClick={handleCheckForUpdates}
@@ -70,52 +60,13 @@ export function AboutSettingsSection() {
 
       {/* About Section */}
       <section className="pb-2">
-        <h2 className="text-xl font-medium mb-1">About Scratch</h2>
+        <h2 className="text-xl font-medium mb-1">About SlashNote</h2>
         <p className="text-sm text-text-muted mb-4">
-          Scratch is a minimalist markdown scratchpad for capturing quick
-          thoughts, todos, and ideas. We're offline-first, keyboard-optimized,
+          SlashNote is a minimalist markdown scratchpad for capturing quick
+          thoughts, todos, and ideas. It's offline-first, keyboard-optimized,
           AI-compatible, and open source with no cloud, no accounts, and no
-          subscriptions. Learn more on{" "}
-          <button
-            onClick={() => handleOpenUrl("https://www.ericli.io/scratch")}
-            className="text-text-muted border-b border-text-muted/50 hover:text-text hover:border-text cursor-pointer transition-colors"
-          >
-            our website
-          </button>
-          .
+          subscriptions.
         </p>
-        <p className="text-sm text-text-muted mb-4">
-          Created and maintained by{" "}
-          <button
-            onClick={() => handleOpenUrl("https://ericli.io")}
-            className="text-text-muted border-b border-text-muted/50 hover:text-text hover:border-text cursor-pointer transition-colors"
-          >
-            Eric Li
-          </button>{" "}
-          with moral support from his cat, Mochi, and actual support from many
-          contributors on GitHub.
-        </p>
-        <div className="flex items-center gap-1">
-          <Button
-            onClick={() => handleOpenUrl("https://github.com/erictli/scratch")}
-            variant="outline"
-            size="md"
-            className="gap-1.25"
-          >
-            <GithubIcon className="w-4.5 h-4.5 stroke-[1.5]" />
-            View on GitHub
-          </Button>
-          <Button
-            onClick={() =>
-              handleOpenUrl("https://github.com/erictli/scratch/issues")
-            }
-            variant="ghost"
-            size="md"
-            className="gap-1.25 text-text"
-          >
-            Submit Feedback
-          </Button>
-        </div>
       </section>
     </div>
   );

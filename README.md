@@ -1,12 +1,10 @@
-# Scratch
+# SlashNote
 
-<img src="docs/app-icon.png" alt="Scratch" width="128" height="128" style="border-radius: 22px; margin-bottom: 8px;">
+<img src="public/SlashNote.png" alt="SlashNote" width="128" height="128" style="border-radius: 22px; margin-bottom: 8px;">
 
 A minimalist, offline-first markdown note-taking app for macOS, Windows, and Linux.
 
 ![macOS](https://img.shields.io/badge/platform-macOS-lightgrey) ![Windows](https://img.shields.io/badge/platform-Windows-blue) ![Linux](https://img.shields.io/badge/platform-Linux-orange)
-
-[Website](https://www.ericli.io/scratch) · [Releases](https://github.com/erictli/scratch/releases)
 
 ## Features
 
@@ -37,26 +35,17 @@ A minimalist, offline-first markdown note-taking app for macOS, Windows, and Lin
 
 ### macOS
 
-**Homebrew (Recommended)**
-
-```bash
-brew tap erictli/tap
-brew install --cask erictli/tap/scratch
-```
-
-**Manual Download**
-
-1. Download the latest `.dmg` from [Releases](https://github.com/erictli/scratch/releases)
-2. Open the DMG and drag Scratch to Applications
-3. Open Scratch from Applications
+1. Download the latest `.dmg` from Releases
+2. Open the DMG and drag SlashNote to Applications
+3. Open SlashNote from Applications
 
 ### Windows
 
-Download the latest `.exe` installer from [Releases](https://github.com/erictli/scratch/releases) and run it. WebView2 will be downloaded automatically if needed.
+Download the latest `.exe` installer from Releases and run it. WebView2 will be downloaded automatically if needed.
 
 ### Linux
 
-Download the latest `.AppImage` or `.deb` from [Releases](https://github.com/erictli/scratch/releases).
+Download the latest `.AppImage` or `.deb` from Releases.
 
 ### From Source
 
@@ -65,8 +54,8 @@ Download the latest `.AppImage` or `.deb` from [Releases](https://github.com/eri
 **macOS:** Xcode Command Line Tools · **Windows:** WebView2 Runtime (pre-installed on Windows 11)
 
 ```bash
-git clone https://github.com/erictli/scratch.git
-cd scratch
+git clone <your-repo-url>
+cd slashnote
 npm install
 npm run tauri dev      # Development
 npm run tauri build    # Production build
@@ -74,7 +63,7 @@ npm run tauri build    # Production build
 
 ## Keyboard Shortcuts
 
-Scratch is designed to be usable without a mouse. Here are the essentials to get started:
+SlashNote is designed to be usable without a mouse. Here are the essentials to get started:
 
 | Shortcut          | Action                 |
 | ----------------- | ---------------------- |
@@ -106,9 +95,9 @@ Many more shortcuts and features are available in the app—explore via the comm
 
 ## Contributing
 
-Contributions and suggestions are welcome. Scratch is actively maintained but the release cycle is at the whim of my schedule – sometimes I'll review and merge same-day, sometimes it may take several weeks.
+Contributions and suggestions are welcome. SlashNote is actively maintained but the release cycle is at the whim of my schedule – sometimes I'll review and merge same-day, sometimes it may take several weeks.
 
-What makes Scratch special is its minimal feature set and focus on user experience. We're not trying to build Obsidian or Notion, so not every feature will be a fit.
+What makes SlashNote special is its minimal feature set and focus on user experience. We're not trying to build Obsidian or Notion, so not every feature will be a fit.
 
 **Small fixes and improvements:** go ahead and open a PR, we'll try to merge these in regularly.
 

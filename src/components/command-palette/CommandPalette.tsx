@@ -379,7 +379,7 @@ export function CommandPalette({
           label: "Git: Quick Commit",
           icon: <GitCommitIcon className="w-4.5 h-4.5 stroke-[1.5]" />,
           action: async () => {
-            const success = await commit("Quick commit from Scratch");
+            const success = await commit("Quick commit from SlashNote");
             if (success) {
               toast.success("Changes committed");
             } else {
