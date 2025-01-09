@@ -51,6 +51,8 @@ interface FormatBarProps {
   onAddImage: () => void;
 }
 
+// FormatBar must re-render with parent to reflect editor.isActive() state changes
+// (editor instance is mutable, so memo would cause stale active states)
 function FormatBar({ editor, onAddLink, onAddImage }: FormatBarProps) {
   if (!editor) return null;
 
@@ -175,7 +177,7 @@ function FormatBar({ editor, onAddLink, onAddImage }: FormatBarProps) {
 }
 
 export function Editor() {
-  const { currentNote, saveNote, selectedNoteId, selectNote, createNote, notes } =
+  const { currentNote, saveNote, selectNote, createNote, notes } =
     useNotes();
   const [isDirty, setIsDirty] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -309,57 +311,69 @@ export function Editor() {
     immediatelyRender: false,
   });
 
-  // Track previous note ID to only reload on actual note switch
-  const prevNoteIdRef = useRef<string | null>(null);
+  // Track which note's content is currently loaded in the editor
+  const loadedNoteIdRef = useRef<string | null>(null);
 
-  // Load note content when selection changes (not on every save)
+  // Load note content when the current note changes
   useEffect(() => {
-    // Only load content when switching to a different note
-    if (selectedNoteId === prevNoteIdRef.current) {
+    // Skip if no note or editor
+    if (!currentNote || !editor) {
       return;
     }
 
-    const isNewNote = prevNoteIdRef.current === null && selectedNoteId !== null;
-    const wasEmpty = prevNoteIdRef.current !== null && currentNote?.content?.trim() === "";
-    prevNoteIdRef.current = selectedNoteId;
+    // Only load content when we have a NEW note to load
+    // (i.e., currentNote.id differs from what's already loaded)
+    if (currentNote.id === loadedNoteIdRef.current) {
+      return;
+    }
 
-    if (currentNote && editor) {
-      isLoadingRef.current = true;
+    const isNewNote = loadedNoteIdRef.current === null;
+    const wasEmpty = loadedNoteIdRef.current !== null && currentNote.content?.trim() === "";
+    const loadingNoteId = currentNote.id;
+    loadedNoteIdRef.current = loadingNoteId;
 
-      // Scroll to top when switching notes
-      scrollContainerRef.current?.scrollTo(0, 0);
+    isLoadingRef.current = true;
 
-      // Blur editor before setting content to prevent ghost cursor
-      editor.commands.blur();
+    // Scroll to top when switching notes
+    scrollContainerRef.current?.scrollTo(0, 0);
 
-      // Parse markdown and set content
-      const manager = editor.storage.markdown?.manager;
-      if (manager) {
-        try {
-          const parsed = manager.parse(currentNote.content);
-          editor.commands.setContent(parsed);
-        } catch {
-          // Fallback to plain text if parsing fails
-          editor.commands.setContent(currentNote.content);
-        }
-      } else {
+    // Blur editor before setting content to prevent ghost cursor
+    editor.commands.blur();
+
+    // Parse markdown and set content
+    const manager = editor.storage.markdown?.manager;
+    if (manager) {
+      try {
+        const parsed = manager.parse(currentNote.content);
+        editor.commands.setContent(parsed);
+      } catch {
+        // Fallback to plain text if parsing fails
         editor.commands.setContent(currentNote.content);
       }
-
-      setIsDirty(false);
-
-      requestAnimationFrame(() => {
-        isLoadingRef.current = false;
-
-        // For brand new empty notes, focus and select all so user can start typing
-        if ((isNewNote || wasEmpty) && currentNote.content.trim() === "") {
-          editor.commands.focus("start");
-          editor.commands.selectAll();
-        }
-        // For existing notes, don't auto-focus - let user click where they want
-      });
+    } else {
+      editor.commands.setContent(currentNote.content);
     }
-  }, [currentNote, selectedNoteId, editor]);
+
+    setIsDirty(false);
+
+    // Capture note ID to check in RAF callback - prevents race condition
+    // if user switches notes quickly before RAF fires
+    requestAnimationFrame(() => {
+      // Bail if a different note started loading
+      if (loadedNoteIdRef.current !== loadingNoteId) {
+        return;
+      }
+
+      isLoadingRef.current = false;
+
+      // For brand new empty notes, focus and select all so user can start typing
+      if ((isNewNote || wasEmpty) && currentNote.content.trim() === "") {
+        editor.commands.focus("start");
+        editor.commands.selectAll();
+      }
+      // For existing notes, don't auto-focus - let user click where they want
+    });
+  }, [currentNote, editor]);
 
 
   // Cleanup timeout on unmount
@@ -378,7 +392,7 @@ export function Editor() {
     const existingUrl = editor.getAttributes("link").href || "";
     setLinkUrl(existingUrl);
     setShowLinkInput(true);
-    setTimeout(() => linkInputRef.current?.focus(), 0);
+    requestAnimationFrame(() => linkInputRef.current?.focus());
   }, [editor]);
 
   const handleLinkSubmit = useCallback(() => {
