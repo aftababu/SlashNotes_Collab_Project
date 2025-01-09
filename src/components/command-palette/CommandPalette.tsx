@@ -1,0 +1,263 @@
+import {
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+  type KeyboardEvent,
+} from "react";
+import { useNotes } from "../../context/NotesContext";
+import { useTheme } from "../../context/ThemeContext";
+import { CommandItem } from "../ui";
+
+// Clean title - remove nbsp and other invisible characters
+function cleanTitle(title: string | undefined): string {
+  if (!title) return "Untitled";
+  const cleaned = title
+    .replace(/&nbsp;/g, " ")
+    .replace(/\u00A0/g, " ")
+    .replace(/\u200B/g, "")
+    .trim();
+  return cleaned || "Untitled";
+}
+
+interface Command {
+  id: string;
+  label: string;
+  shortcut?: string;
+  action: () => void;
+}
+
+interface CommandPaletteProps {
+  open: boolean;
+  onClose: () => void;
+}
+
+export function CommandPalette({ open, onClose }: CommandPaletteProps) {
+  const {
+    notes,
+    selectNote,
+    createNote,
+    deleteNote,
+    currentNote,
+  } = useNotes();
+  const { theme, setTheme } = useTheme();
+  const [query, setQuery] = useState("");
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+
+  // Commands
+  const commands: Command[] = [
+    {
+      id: "new-note",
+      label: "New Note",
+      shortcut: "⌘N",
+      action: () => {
+        createNote();
+        onClose();
+      },
+    },
+    {
+      id: "delete-note",
+      label: "Delete Current Note",
+      action: () => {
+        if (currentNote) {
+          deleteNote(currentNote.id);
+        }
+        onClose();
+      },
+    },
+    {
+      id: "theme-light",
+      label: `Theme: Light${theme === "light" ? " ✓" : ""}`,
+      action: () => {
+        setTheme("light");
+        onClose();
+      },
+    },
+    {
+      id: "theme-dark",
+      label: `Theme: Dark${theme === "dark" ? " ✓" : ""}`,
+      action: () => {
+        setTheme("dark");
+        onClose();
+      },
+    },
+    {
+      id: "theme-system",
+      label: `Theme: System${theme === "system" ? " ✓" : ""}`,
+      action: () => {
+        setTheme("system");
+        onClose();
+      },
+    },
+  ];
+
+  // Filter notes and commands based on query
+  const filteredNotes = query.trim()
+    ? notes.filter((note) =>
+        note.title.toLowerCase().includes(query.toLowerCase())
+      )
+    : notes;
+
+  const filteredCommands = query.trim()
+    ? commands.filter((cmd) =>
+        cmd.label.toLowerCase().includes(query.toLowerCase())
+      )
+    : commands;
+
+  // All items (notes first, then commands)
+  const allItems = [
+    ...filteredNotes.slice(0, 10).map((note) => ({
+      type: "note" as const,
+      id: note.id,
+      label: cleanTitle(note.title),
+      preview: note.preview,
+      action: () => {
+        selectNote(note.id);
+        onClose();
+      },
+    })),
+    ...filteredCommands.map((cmd) => ({
+      type: "command" as const,
+      id: cmd.id,
+      label: cmd.label,
+      shortcut: cmd.shortcut,
+      action: cmd.action,
+    })),
+  ];
+
+  // Reset state when opened
+  useEffect(() => {
+    if (open) {
+      setQuery("");
+      setSelectedIndex(0);
+      setTimeout(() => inputRef.current?.focus(), 50);
+    }
+  }, [open]);
+
+  // Reset selection when items change
+  useEffect(() => {
+    setSelectedIndex(0);
+  }, [query]);
+
+  // Scroll selected item into view
+  useEffect(() => {
+    if (listRef.current) {
+      const selectedItem = listRef.current.querySelector(
+        `[data-index="${selectedIndex}"]`
+      );
+      selectedItem?.scrollIntoView({ block: "nearest" });
+    }
+  }, [selectedIndex]);
+
+  const handleKeyDown = useCallback(
+    (e: KeyboardEvent) => {
+      switch (e.key) {
+        case "ArrowDown":
+          e.preventDefault();
+          setSelectedIndex((i) => Math.min(i + 1, allItems.length - 1));
+          break;
+        case "ArrowUp":
+          e.preventDefault();
+          setSelectedIndex((i) => Math.max(i - 1, 0));
+          break;
+        case "Enter":
+          e.preventDefault();
+          if (allItems[selectedIndex]) {
+            allItems[selectedIndex].action();
+          }
+          break;
+        case "Escape":
+          e.preventDefault();
+          onClose();
+          break;
+      }
+    },
+    [allItems, selectedIndex, onClose]
+  );
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh]">
+      {/* Backdrop */}
+      <div
+        className="fixed inset-0 bg-black/50 backdrop-blur-sm animate-fade-in"
+        onClick={onClose}
+      />
+
+      {/* Palette */}
+      <div className="relative w-full max-w-lg bg-white dark:bg-stone-900 rounded-xl shadow-2xl overflow-hidden border border-stone-200 dark:border-stone-700 animate-slide-down">
+        {/* Search input */}
+        <div className="border-b border-stone-200 dark:border-stone-700">
+          <input
+            ref={inputRef}
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Search notes or type a command..."
+            className="w-full px-4 py-3 text-lg bg-transparent outline-none text-stone-900 dark:text-stone-100 placeholder-stone-400"
+          />
+        </div>
+
+        {/* Results */}
+        <div ref={listRef} className="max-h-80 overflow-y-auto">
+          {allItems.length === 0 ? (
+            <div className="p-4 text-center text-stone-500 dark:text-stone-400">
+              No results found
+            </div>
+          ) : (
+            <>
+              {/* Notes section */}
+              {filteredNotes.length > 0 && (
+                <div>
+                  <div className="px-4 py-2 text-xs font-medium text-stone-500 dark:text-stone-400 uppercase tracking-wider">
+                    Notes
+                  </div>
+                  {filteredNotes.slice(0, 10).map((note, i) => {
+                    const index = i;
+                    const item = allItems[index];
+                    return (
+                      <div key={note.id} data-index={index}>
+                        <CommandItem
+                          label={cleanTitle(note.title)}
+                          subtitle={note.preview}
+                          isSelected={selectedIndex === index}
+                          onClick={item.action}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Commands section */}
+              {filteredCommands.length > 0 && (
+                <div>
+                  <div className="px-4 py-2 text-xs font-medium text-stone-500 dark:text-stone-400 uppercase tracking-wider border-t border-stone-100 dark:border-stone-800">
+                    Commands
+                  </div>
+                  {filteredCommands.map((cmd, i) => {
+                    const index = filteredNotes.slice(0, 10).length + i;
+                    return (
+                      <div key={cmd.id} data-index={index}>
+                        <CommandItem
+                          label={cmd.label}
+                          shortcut={cmd.shortcut}
+                          isSelected={selectedIndex === index}
+                          onClick={cmd.action}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

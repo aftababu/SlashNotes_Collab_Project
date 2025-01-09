@@ -1,0 +1,267 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+/* Custom theme variables */
+@theme {
+  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+/* Base styles */
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+/* macOS transparent title bar support */
+.titlebar-drag-region {
+  -webkit-app-region: drag;
+}
+
+.titlebar-no-drag {
+  -webkit-app-region: no-drag;
+}
+
+body {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Wikilink styles - highlight [[text]] in raw markdown */
+.wikilink-syntax {
+  color: #3b82f6;
+  background-color: rgba(59, 130, 246, 0.1);
+  border-radius: 0.25rem;
+}
+
+/* Smooth theme transitions */
+html {
+  color-scheme: light;
+}
+
+html.dark {
+  color-scheme: dark;
+}
+
+/* Command palette animations */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slide-down {
+  from {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.15s ease-out;
+}
+
+.animate-slide-down {
+  animation: slide-down 0.2s ease-out;
+}
+
+/* Flip text animation for split-flap display effect */
+@keyframes flip-char {
+  0% {
+    transform: rotateX(0deg);
+    opacity: 1;
+  }
+  50% {
+    transform: rotateX(-90deg);
+    opacity: 0.5;
+  }
+  100% {
+    transform: rotateX(0deg);
+    opacity: 1;
+  }
+}
+
+.animate-flip-char {
+  animation: flip-char 0.2s ease-out;
+}
+
+/* Prose spacing overrides - tighter spacing */
+.prose p {
+  margin-top: 0.5em;
+  margin-bottom: 0.5em;
+}
+
+.prose ul, .prose ol {
+  margin-top: 0.5em;
+  margin-bottom: 0.5em;
+  padding-left: 1.25em;
+}
+
+/* Remove extra margins from nested lists */
+.prose li > ul,
+.prose li > ol {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+.prose li {
+  margin-top: 0;
+  margin-bottom: 0;
+  padding-left: 0.25em;
+}
+
+.prose li > p {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+.prose > :first-child {
+  margin-top: 0;
+}
+
+.prose > :last-child {
+  margin-bottom: 0;
+}
+
+/* Task list checkbox styles */
+ul[data-type="taskList"] {
+  list-style: none;
+  padding-left: 0 !important;
+  margin-top: 0.5em;
+  margin-bottom: 0.5em;
+}
+
+ul[data-type="taskList"] li {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+}
+
+/* Nested task lists */
+ul[data-type="taskList"] ul[data-type="taskList"] {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+ul[data-type="taskList"] li > label {
+  flex-shrink: 0;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  height: 1.5em;
+}
+
+ul[data-type="taskList"] li > label input[type="checkbox"] {
+  width: 0.875rem;
+  height: 0.875rem;
+  margin: 0;
+  accent-color: #57534e;
+  cursor: pointer;
+}
+
+ul[data-type="taskList"] li > div {
+  flex: 1;
+  min-width: 0;
+}
+
+ul[data-type="taskList"] li > div > p {
+  margin: 0;
+}
+
+ul[data-type="taskList"] li[data-checked="true"] > div {
+  text-decoration: line-through;
+  opacity: 0.6;
+}
+
+/* Radix UI tooltip animations */
+@keyframes tooltip-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes tooltip-fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes tooltip-zoom-in {
+  from { transform: scale(0.95); }
+  to { transform: scale(1); }
+}
+
+@keyframes tooltip-zoom-out {
+  from { transform: scale(1); }
+  to { transform: scale(0.95); }
+}
+
+@keyframes tooltip-slide-in-from-top {
+  from { transform: translateY(-2px); }
+  to { transform: translateY(0); }
+}
+
+@keyframes tooltip-slide-in-from-bottom {
+  from { transform: translateY(2px); }
+  to { transform: translateY(0); }
+}
+
+@keyframes tooltip-slide-in-from-left {
+  from { transform: translateX(-2px); }
+  to { transform: translateX(0); }
+}
+
+@keyframes tooltip-slide-in-from-right {
+  from { transform: translateX(2px); }
+  to { transform: translateX(0); }
+}
+
+.animate-in {
+  animation-duration: 150ms;
+  animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  animation-fill-mode: both;
+}
+
+.animate-out {
+  animation-duration: 100ms;
+  animation-timing-function: ease-out;
+  animation-fill-mode: both;
+}
+
+.fade-in-0 {
+  animation-name: tooltip-fade-in;
+}
+
+.fade-out-0 {
+  animation-name: tooltip-fade-out;
+}
+
+.zoom-in-95 {
+  animation-name: tooltip-zoom-in;
+}
+
+.zoom-out-95 {
+  animation-name: tooltip-zoom-out;
+}
+
+.slide-in-from-top-2 {
+  animation-name: tooltip-slide-in-from-top;
+}
+
+.slide-in-from-bottom-2 {
+  animation-name: tooltip-slide-in-from-bottom;
+}
+
+.slide-in-from-left-2 {
+  animation-name: tooltip-slide-in-from-left;
+}
+
+.slide-in-from-right-2 {
+  animation-name: tooltip-slide-in-from-right;
+}
