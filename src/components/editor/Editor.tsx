@@ -1,7 +1,8 @@
-import { useEffect, useRef, useCallback, useState, useMemo } from "react";
+import { useEffect, useRef, useCallback, useState } from "react";
 import {
   useEditor,
   EditorContent,
+  ReactRenderer,
   type Editor as TiptapEditor,
 } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
@@ -11,13 +12,13 @@ import Image from "@tiptap/extension-image";
 import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
 import { Markdown } from "@tiptap/markdown";
+import tippy, { type Instance as TippyInstance } from "tippy.js";
 import { open } from "@tauri-apps/plugin-dialog";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { useNotes } from "../../context/NotesContext";
-import { Wikilink } from "./extensions/Wikilink";
-import { createWikilinkSuggestion } from "./extensions/wikilinkSuggestion";
-import { ToolbarButton, Tooltip, Input } from "../ui";
+import { LinkEditor } from "./LinkEditor";
+import { Button, IconButton, ToolbarButton, Tooltip } from "../ui";
 import {
   BoldIcon,
   ItalicIcon,
@@ -25,6 +26,7 @@ import {
   Heading1Icon,
   Heading2Icon,
   Heading3Icon,
+  Heading4Icon,
   ListIcon,
   ListOrderedIcon,
   CheckSquareIcon,
@@ -38,7 +40,7 @@ import {
   CheckIcon,
   CopyIcon,
   ChevronDownIcon,
-  WikilinkIcon,
+  PanelLeftIcon,
 } from "../icons";
 
 function formatDateTime(timestamp: number): string {
@@ -57,7 +59,6 @@ interface FormatBarProps {
   editor: TiptapEditor | null;
   onAddLink: () => void;
   onAddImage: () => void;
-  onAddWikilink: () => void;
 }
 
 // FormatBar must re-render with parent to reflect editor.isActive() state changes
@@ -66,7 +67,6 @@ function FormatBar({
   editor,
   onAddLink,
   onAddImage,
-  onAddWikilink,
 }: FormatBarProps) {
   if (!editor) return null;
 
@@ -116,6 +116,13 @@ function FormatBar({
         title="Heading 3"
       >
         <Heading3Icon />
+      </ToolbarButton>
+      <ToolbarButton
+        onClick={() => editor.chain().focus().toggleHeading({ level: 4 }).run()}
+        isActive={editor.isActive("heading", { level: 4 })}
+        title="Heading 4"
+      >
+        <Heading4Icon />
       </ToolbarButton>
 
       <div className="w-px h-5 bg-bg-emphasis mx-1" />
@@ -182,78 +189,28 @@ function FormatBar({
       <ToolbarButton onClick={onAddImage} isActive={false} title="Add Image">
         <ImageIcon />
       </ToolbarButton>
-      <ToolbarButton
-        onClick={onAddWikilink}
-        isActive={false}
-        title="Add Wikilink"
-      >
-        <WikilinkIcon />
-      </ToolbarButton>
     </div>
   );
 }
 
-export function Editor() {
-  const { currentNote, saveNote, selectNote, createNote, notes } =
-    useNotes();
+interface EditorProps {
+  onToggleSidebar?: () => void;
+  sidebarVisible?: boolean;
+}
+
+export function Editor({ onToggleSidebar, sidebarVisible }: EditorProps) {
+  const { currentNote, saveNote, createNote } = useNotes();
   const [isDirty, setIsDirty] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [showLinkInput, setShowLinkInput] = useState(false);
-  const [linkUrl, setLinkUrl] = useState("");
-  const linkInputRef = useRef<HTMLInputElement>(null);
   const saveTimeoutRef = useRef<number | null>(null);
+  const linkPopupRef = useRef<TippyInstance | null>(null);
   const isLoadingRef = useRef(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const notesRef = useRef(notes);
   const editorRef = useRef<TiptapEditor | null>(null);
+  const currentNoteIdRef = useRef<string | null>(null);
 
-  // Keep notesRef updated with latest notes
-  useEffect(() => {
-    notesRef.current = notes;
-  }, [notes]);
-
-  // Create wikilink suggestion config that reads from ref (stable function)
-  const wikilinkSuggestion = useMemo(
-    () =>
-      createWikilinkSuggestion({
-        getNotes: () => notesRef.current,
-      }),
-    [],
-  );
-
-  // Build a map of note titles to IDs for wikilink navigation
-  const noteTitleToId = useMemo(() => {
-    const map: Record<string, string> = {};
-    for (const note of notes) {
-      const titleLower = note.title.toLowerCase();
-      map[titleLower] = note.id;
-    }
-    return map;
-  }, [notes]);
-
-  // Handle wikilink navigation
-  const handleWikilinkNavigate = useCallback(
-    (noteId: string) => {
-      selectNote(noteId);
-    },
-    [selectNote],
-  );
-
-  // Handle wikilink creation
-  const handleWikilinkCreate = useCallback(
-    async (title: string) => {
-      // Check if note with this title exists
-      const titleLower = title.toLowerCase();
-      const existingId = noteTitleToId[titleLower];
-      if (existingId) {
-        selectNote(existingId);
-      } else {
-        // Create new note
-        await createNote();
-      }
-    },
-    [noteTitleToId, selectNote, createNote],
-  );
+  // Keep ref in sync with current note ID
+  currentNoteIdRef.current = currentNote?.id ?? null;
 
   // Get markdown from editor
   const getMarkdown = useCallback(
@@ -276,11 +233,21 @@ export function Editor() {
         clearTimeout(saveTimeoutRef.current);
       }
 
+      // Capture the note ID now (before the timeout)
+      const savingNoteId = currentNote?.id;
+
       saveTimeoutRef.current = window.setTimeout(async () => {
+        // Guard: only save if still on the same note
+        if (savingNoteId && currentNoteIdRef.current !== savingNoteId) {
+          return;
+        }
+
         setIsSaving(true);
         try {
           // Track what we're saving to distinguish from external changes
-          lastSavedContentRef.current = newContent;
+          if (savingNoteId) {
+            lastSaveRef.current = { noteId: savingNoteId, content: newContent };
+          }
           await saveNote(newContent);
           setIsDirty(false);
         } finally {
@@ -288,7 +255,7 @@ export function Editor() {
         }
       }, 1000);
     },
-    [saveNote],
+    [saveNote, currentNote?.id],
   );
 
   const editor = useEditor({
@@ -316,16 +283,28 @@ export function Editor() {
         nested: true,
       }),
       Markdown.configure({}),
-      Wikilink.configure({
-        onNavigate: handleWikilinkNavigate,
-        onCreate: handleWikilinkCreate,
-        suggestion: wikilinkSuggestion,
-      }),
     ],
     editorProps: {
       attributes: {
         class:
-          "prose prose-lg dark:prose-invert max-w-none focus:outline-none min-h-full px-8 pt-4 pb-32",
+          "prose prose-lg dark:prose-invert max-w-3xl mx-auto focus:outline-none min-h-full px-8 pt-12 pb-32",
+      },
+      // Handle cmd/ctrl+click to open links
+      handleClick: (_view, _pos, event) => {
+        // Only handle cmd/ctrl+click
+        if (!event.metaKey && !event.ctrlKey) return false;
+
+        const target = event.target as HTMLElement;
+        const link = target.closest("a");
+        if (link) {
+          const href = link.getAttribute("href");
+          if (href) {
+            event.preventDefault();
+            window.open(href, "_blank", "noopener,noreferrer");
+            return true;
+          }
+        }
+        return false;
       },
       // Trap Tab key inside the editor
       handleKeyDown: (_view, event) => {
@@ -385,8 +364,8 @@ export function Editor() {
   const loadedNoteIdRef = useRef<string | null>(null);
   // Track the modified timestamp of the loaded content
   const loadedModifiedRef = useRef<number | null>(null);
-  // Track content we last saved (to detect external vs our own changes)
-  const lastSavedContentRef = useRef<string | null>(null);
+  // Track the last save (note ID and content) to detect our own saves vs external changes
+  const lastSaveRef = useRef<{ noteId: string; content: string } | null>(null);
 
   // Load note content when the current note changes
   useEffect(() => {
@@ -396,7 +375,11 @@ export function Editor() {
     }
 
     const isSameNote = currentNote.id === loadedNoteIdRef.current;
-    const isOurSave = currentNote.content === lastSavedContentRef.current;
+    const lastSave = lastSaveRef.current;
+    // Check if this update is from our own save (same note we saved, content matches)
+    const isOurSave = lastSave &&
+      (lastSave.noteId === currentNote.id || lastSave.noteId === loadedNoteIdRef.current) &&
+      lastSave.content === currentNote.content;
     const isExternalChange = isSameNote &&
       currentNote.modified !== loadedModifiedRef.current &&
       !isOurSave;
@@ -409,9 +392,11 @@ export function Editor() {
     }
 
     // If it's our own save with a rename (ID changed but content matches), just update refs
-    if (isOurSave && !isSameNote) {
+    // This happens when the title changes and the file gets renamed
+    if (isOurSave && !isSameNote && lastSave?.noteId === loadedNoteIdRef.current) {
       loadedNoteIdRef.current = currentNote.id;
       loadedModifiedRef.current = currentNote.modified;
+      lastSaveRef.current = null; // Clear after handling rename
       return;
     }
 
@@ -483,40 +468,109 @@ export function Editor() {
     });
   }, [currentNote, editor]);
 
-  // Cleanup timeout on unmount
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current);
       }
+      if (linkPopupRef.current) {
+        linkPopupRef.current.destroy();
+      }
     };
   }, []);
 
-  // Link handlers
+  // Link handlers - show inline popup at cursor position
   const handleAddLink = useCallback(() => {
     if (!editor) return;
+
+    // Destroy existing popup if any
+    if (linkPopupRef.current) {
+      linkPopupRef.current.destroy();
+      linkPopupRef.current = null;
+    }
+
     // Get existing link URL if cursor is on a link
     const existingUrl = editor.getAttributes("link").href || "";
-    setLinkUrl(existingUrl);
-    setShowLinkInput(true);
-    requestAnimationFrame(() => linkInputRef.current?.focus());
-  }, [editor]);
 
-  const handleLinkSubmit = useCallback(() => {
-    if (!editor) return;
-    if (linkUrl.trim()) {
-      editor.chain().focus().setLink({ href: linkUrl.trim() }).run();
-    } else {
-      editor.chain().focus().unsetLink().run();
-    }
-    setShowLinkInput(false);
-    setLinkUrl("");
-  }, [editor, linkUrl]);
+    // Get selection bounds for popup placement using DOM Range for accurate multi-line support
+    const { from, to } = editor.state.selection;
 
-  const handleLinkCancel = useCallback(() => {
-    setShowLinkInput(false);
-    setLinkUrl("");
-    editor?.commands.focus();
+    // Create a virtual element at the selection for tippy to anchor to
+    const virtualElement = {
+      getBoundingClientRect: () => {
+        // Try to get accurate bounds using DOM Range
+        const startPos = editor.view.domAtPos(from);
+        const endPos = editor.view.domAtPos(to);
+
+        if (startPos && endPos) {
+          const range = document.createRange();
+          range.setStart(startPos.node, startPos.offset);
+          range.setEnd(endPos.node, endPos.offset);
+          return range.getBoundingClientRect();
+        }
+
+        // Fallback to coordsAtPos for collapsed selections
+        const coords = editor.view.coordsAtPos(from);
+        return {
+          width: 0,
+          height: coords.bottom - coords.top,
+          top: coords.top,
+          left: coords.left,
+          right: coords.left,
+          bottom: coords.bottom,
+          x: coords.left,
+          y: coords.top,
+        };
+      },
+    };
+
+    // Create the link editor component
+    const component = new ReactRenderer(LinkEditor, {
+      props: {
+        initialUrl: existingUrl,
+        onSubmit: (url: string) => {
+          if (url.trim()) {
+            editor
+              .chain()
+              .focus()
+              .extendMarkRange("link")
+              .setLink({ href: url.trim() })
+              .run();
+          } else {
+            editor.chain().focus().extendMarkRange("link").unsetLink().run();
+          }
+          linkPopupRef.current?.destroy();
+          linkPopupRef.current = null;
+        },
+        onRemove: () => {
+          editor.chain().focus().extendMarkRange("link").unsetLink().run();
+          linkPopupRef.current?.destroy();
+          linkPopupRef.current = null;
+        },
+        onCancel: () => {
+          editor.commands.focus();
+          linkPopupRef.current?.destroy();
+          linkPopupRef.current = null;
+        },
+      },
+      editor,
+    });
+
+    // Create tippy popup
+    linkPopupRef.current = tippy(document.body, {
+      getReferenceClientRect: () => virtualElement.getBoundingClientRect() as DOMRect,
+      appendTo: () => document.body,
+      content: component.element,
+      showOnCreate: true,
+      interactive: true,
+      trigger: "manual",
+      placement: "bottom-start",
+      offset: [0, 8],
+      onDestroy: () => {
+        component.destroy();
+      },
+    });
   }, [editor]);
 
   // Image handler
@@ -580,25 +634,42 @@ export function Editor() {
     }
   }, [editor]);
 
-  // Wikilink handler - insert [[ to trigger suggestion
-  const handleAddWikilink = useCallback(() => {
-    if (!editor) return;
-    editor.chain().focus().insertContent("[[").run();
-  }, [editor]);
-
   if (!currentNote) {
     return (
       <div className="flex-1 flex flex-col bg-bg">
         {/* Drag region */}
-        <div className="h-10 shrink-0" data-tauri-drag-region />
-        <div className="flex-1 flex items-center justify-center">
+        <div className="h-10 shrink-0 flex items-end px-4 pb-1" data-tauri-drag-region>
+          {onToggleSidebar && (
+            <IconButton
+              onClick={onToggleSidebar}
+              title={sidebarVisible ? "Hide sidebar (⌘\\)" : "Show sidebar (⌘\\)"}
+              className="titlebar-no-drag"
+            >
+              <PanelLeftIcon className="w-4 h-4" />
+            </IconButton>
+          )}
+        </div>
+        <div className="flex-1 flex items-center justify-center pb-6">
           <div className="text-center text-text-muted">
             <img
               src="/note-dark.png"
               alt="Note"
-              className="w-36 h-auto mx-auto mb-4 invert dark:invert-0"
+              className="w-48 h-auto mx-auto mb-2 invert dark:invert-0"
             />
-            <p>Select a note or create a new one</p>
+            <h1
+            className="text-2xl text-text font-serif mb-1 tracking-[-0.01em] "
+          >
+            A blank page awaits
+          </h1>
+            <p>Pick up where you left off, or start something new</p>
+            <Button
+              onClick={createNote}
+              variant="secondary"
+              size="sm"
+              className="mt-4"
+            >
+              New Note <span className="text-text-muted ml-1">⌘N</span>
+            </Button>
           </div>
         </div>
       </div>
@@ -607,14 +678,24 @@ export function Editor() {
 
   return (
     <div className="flex-1 flex flex-col bg-bg overflow-hidden">
-      {/* Drag region with date and save status */}
+      {/* Drag region with sidebar toggle, date and save status */}
       <div
         className="h-10 shrink-0 flex items-end justify-between px-4 pb-1"
         data-tauri-drag-region
       >
-        <span className="text-xs text-text-muted">
-          {formatDateTime(currentNote.modified)}
-        </span>
+        <div className="titlebar-no-drag flex items-center gap-3">
+          {onToggleSidebar && (
+            <IconButton
+              onClick={onToggleSidebar}
+              title={sidebarVisible ? "Hide sidebar (⌘\\)" : "Show sidebar (⌘\\)"}
+            >
+              <PanelLeftIcon className="w-4 h-4" />
+            </IconButton>
+          )}
+          <span className="text-xs text-text-muted">
+            {formatDateTime(currentNote.modified)}
+          </span>
+        </div>
         <div className="titlebar-no-drag flex items-center gap-2">
           <DropdownMenu.Root>
             <Tooltip content="Copy as...">
@@ -669,37 +750,7 @@ export function Editor() {
         editor={editor}
         onAddLink={handleAddLink}
         onAddImage={handleAddImage}
-        onAddWikilink={handleAddWikilink}
       />
-
-      {/* Link Input */}
-      {showLinkInput && (
-        <div className="mx-4 mb-2 flex items-center gap-2">
-          <Input
-            ref={linkInputRef}
-            type="url"
-            placeholder="Enter URL..."
-            value={linkUrl}
-            onChange={(e) => setLinkUrl(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                handleLinkSubmit();
-              } else if (e.key === "Escape") {
-                handleLinkCancel();
-              }
-            }}
-            className="flex-1"
-          />
-          <ToolbarButton
-            onClick={handleLinkSubmit}
-            isActive={false}
-            title="Apply link"
-          >
-            <CheckIcon />
-          </ToolbarButton>
-        </div>
-      )}
 
       {/* TipTap Editor */}
       <div
