@@ -10,6 +10,7 @@ use tantivy::query::QueryParser;
 use tantivy::schema::*;
 use tantivy::{doc, Index, IndexReader, IndexWriter, ReloadPolicy};
 use tauri::{AppHandle, Emitter, Manager, State};
+use tauri_plugin_clipboard_manager::ClipboardExt;
 use tokio::fs;
 
 // Note metadata for list display
@@ -31,11 +32,56 @@ pub struct Note {
     pub modified: i64,
 }
 
+// Theme color customization
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ThemeColors {
+    pub bg: Option<String>,
+    pub bg_secondary: Option<String>,
+    pub bg_muted: Option<String>,
+    pub bg_emphasis: Option<String>,
+    pub text: Option<String>,
+    pub text_muted: Option<String>,
+    pub text_inverse: Option<String>,
+    pub border: Option<String>,
+    pub accent: Option<String>,
+}
+
+// Theme settings
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ThemeSettings {
+    pub mode: String, // "light" | "dark" | "system"
+    pub custom_light_colors: Option<ThemeColors>,
+    pub custom_dark_colors: Option<ThemeColors>,
+}
+
+impl Default for ThemeSettings {
+    fn default() -> Self {
+        Self {
+            mode: "system".to_string(),
+            custom_light_colors: None,
+            custom_dark_colors: None,
+        }
+    }
+}
+
+// Editor font settings (simplified)
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct EditorFontSettings {
+    pub base_font_family: Option<String>, // "system-sans" | "serif" | "monospace"
+    pub base_font_size: Option<f32>,      // in px, default 16
+    pub bold_weight: Option<i32>,         // 600, 700, 800 for headings and bold
+}
+
 // App settings
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Settings {
     pub notes_folder: Option<String>,
-    pub theme: String,
+    pub theme: ThemeSettings,
+    #[serde(rename = "editorFont")]
+    pub editor_font: Option<EditorFontSettings>,
 }
 
 // Search result
@@ -232,10 +278,7 @@ pub struct AppState {
 impl Default for AppState {
     fn default() -> Self {
         Self {
-            settings: RwLock::new(Settings {
-                notes_folder: None,
-                theme: "system".to_string(),
-            }),
+            settings: RwLock::new(Settings::default()),
             notes_cache: RwLock::new(HashMap::new()),
             file_watcher: Mutex::new(None),
             search_index: Mutex::new(None),
@@ -814,6 +857,11 @@ fn start_file_watcher(app: AppHandle, state: State<AppState>) -> Result<(), Stri
 }
 
 #[tauri::command]
+fn copy_to_clipboard(app: AppHandle, text: String) -> Result<(), String> {
+    app.clipboard().write_text(text).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn rebuild_search_index(app: AppHandle, state: State<AppState>) -> Result<(), String> {
     let folder = {
         let settings = state.settings.read().expect("settings read lock");
@@ -843,6 +891,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .setup(|app| {
             // Load settings on startup
             let settings = load_settings(app.handle());
@@ -886,6 +935,7 @@ pub fn run() {
             search_notes,
             start_file_watcher,
             rebuild_search_index,
+            copy_to_clipboard,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

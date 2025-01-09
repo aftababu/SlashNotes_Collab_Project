@@ -8,9 +8,11 @@ import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
 import { Markdown } from "@tiptap/markdown";
 import { open } from "@tauri-apps/plugin-dialog";
-import { convertFileSrc } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { useNotes } from "../../context/NotesContext";
 import { Wikilink } from "./extensions/Wikilink";
+import { createWikilinkSuggestion } from "./extensions/wikilinkSuggestion";
 import { ToolbarButton, Tooltip, Input } from "../ui";
 import {
   FileTextIcon,
@@ -31,6 +33,9 @@ import {
   ImageIcon,
   SpinnerIcon,
   CheckIcon,
+  CopyIcon,
+  ChevronDownIcon,
+  WikilinkIcon,
 } from "../icons";
 
 function formatDateTime(timestamp: number): string {
@@ -49,15 +54,16 @@ interface FormatBarProps {
   editor: TiptapEditor | null;
   onAddLink: () => void;
   onAddImage: () => void;
+  onAddWikilink: () => void;
 }
 
 // FormatBar must re-render with parent to reflect editor.isActive() state changes
 // (editor instance is mutable, so memo would cause stale active states)
-function FormatBar({ editor, onAddLink, onAddImage }: FormatBarProps) {
+function FormatBar({ editor, onAddLink, onAddImage, onAddWikilink }: FormatBarProps) {
   if (!editor) return null;
 
   return (
-    <div className="mx-4 my-2 flex items-center gap-0.5 px-3 py-1.5 rounded-lg bg-stone-100 dark:bg-stone-900 overflow-x-auto">
+    <div className="mx-4 my-2 flex items-center gap-0.5 px-3 py-1.5 rounded-lg bg-bg-muted overflow-x-auto">
       <ToolbarButton
         onClick={() => editor.chain().focus().toggleBold().run()}
         isActive={editor.isActive("bold")}
@@ -80,7 +86,7 @@ function FormatBar({ editor, onAddLink, onAddImage }: FormatBarProps) {
         <StrikethroughIcon />
       </ToolbarButton>
 
-      <div className="w-px h-5 bg-stone-300 dark:bg-stone-700 mx-1" />
+      <div className="w-px h-5 bg-bg-emphasis mx-1" />
 
       <ToolbarButton
         onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
@@ -104,7 +110,7 @@ function FormatBar({ editor, onAddLink, onAddImage }: FormatBarProps) {
         <Heading3Icon />
       </ToolbarButton>
 
-      <div className="w-px h-5 bg-stone-300 dark:bg-stone-700 mx-1" />
+      <div className="w-px h-5 bg-bg-emphasis mx-1" />
 
       <ToolbarButton
         onClick={() => editor.chain().focus().toggleBulletList().run()}
@@ -156,7 +162,7 @@ function FormatBar({ editor, onAddLink, onAddImage }: FormatBarProps) {
         <MinusIcon />
       </ToolbarButton>
 
-      <div className="w-px h-5 bg-stone-300 dark:bg-stone-700 mx-1" />
+      <div className="w-px h-5 bg-bg-emphasis mx-1" />
 
       <ToolbarButton
         onClick={onAddLink}
@@ -171,6 +177,13 @@ function FormatBar({ editor, onAddLink, onAddImage }: FormatBarProps) {
         title="Add Image"
       >
         <ImageIcon />
+      </ToolbarButton>
+      <ToolbarButton
+        onClick={onAddWikilink}
+        isActive={false}
+        title="Add Wikilink"
+      >
+        <WikilinkIcon />
       </ToolbarButton>
     </div>
   );
@@ -187,6 +200,21 @@ export function Editor() {
   const saveTimeoutRef = useRef<number | null>(null);
   const isLoadingRef = useRef(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const notesRef = useRef(notes);
+
+  // Keep notesRef updated with latest notes
+  useEffect(() => {
+    notesRef.current = notes;
+  }, [notes]);
+
+  // Create wikilink suggestion config that reads from ref (stable function)
+  const wikilinkSuggestion = useMemo(
+    () =>
+      createWikilinkSuggestion({
+        getNotes: () => notesRef.current,
+      }),
+    []
+  );
 
   // Build a map of note titles to IDs for wikilink navigation
   const noteTitleToId = useMemo(() => {
@@ -269,7 +297,7 @@ export function Editor() {
       Link.configure({
         openOnClick: false,
         HTMLAttributes: {
-          class: "text-blue-500 underline cursor-pointer",
+          class: "underline cursor-pointer",
         },
       }),
       Image.configure({
@@ -284,6 +312,7 @@ export function Editor() {
       Wikilink.configure({
         onNavigate: handleWikilinkNavigate,
         onCreate: handleWikilinkCreate,
+        suggestion: wikilinkSuggestion,
       }),
     ],
     editorProps: {
@@ -437,13 +466,50 @@ export function Editor() {
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [handleAddLink]);
 
+  // Copy handlers
+  const handleCopyMarkdown = useCallback(async () => {
+    if (!editor) return;
+    try {
+      const markdown = getMarkdown(editor);
+      await invoke("copy_to_clipboard", { text: markdown });
+    } catch (error) {
+      console.error("Failed to copy markdown:", error);
+    }
+  }, [editor, getMarkdown]);
+
+  const handleCopyPlainText = useCallback(async () => {
+    if (!editor) return;
+    try {
+      const plainText = editor.getText();
+      await invoke("copy_to_clipboard", { text: plainText });
+    } catch (error) {
+      console.error("Failed to copy plain text:", error);
+    }
+  }, [editor]);
+
+  const handleCopyHtml = useCallback(async () => {
+    if (!editor) return;
+    try {
+      const html = editor.getHTML();
+      await invoke("copy_to_clipboard", { text: html });
+    } catch (error) {
+      console.error("Failed to copy HTML:", error);
+    }
+  }, [editor]);
+
+  // Wikilink handler - insert [[ to trigger suggestion
+  const handleAddWikilink = useCallback(() => {
+    if (!editor) return;
+    editor.chain().focus().insertContent("[[").run();
+  }, [editor]);
+
   if (!currentNote) {
     return (
-      <div className="flex-1 flex flex-col bg-white dark:bg-stone-950">
+      <div className="flex-1 flex flex-col bg-bg">
         {/* Drag region */}
         <div className="h-10 shrink-0" data-tauri-drag-region />
         <div className="flex-1 flex items-center justify-center">
-          <div className="text-center text-stone-400 dark:text-stone-600">
+          <div className="text-center text-text-muted">
             <FileTextIcon className="w-16 h-16 mx-auto mb-4" />
             <p>Select a note or create a new one</p>
           </div>
@@ -453,30 +519,66 @@ export function Editor() {
   }
 
   return (
-    <div className="flex-1 flex flex-col bg-white dark:bg-stone-950 overflow-hidden">
+    <div className="flex-1 flex flex-col bg-bg overflow-hidden">
       {/* Drag region with date and save status */}
       <div
         className="h-10 shrink-0 flex items-end justify-between px-4 pb-1"
         data-tauri-drag-region
       >
-        <span className="text-xs text-stone-400 dark:text-stone-500">
+        <span className="text-xs text-text-muted">
           {formatDateTime(currentNote.modified)}
         </span>
-        <div className="titlebar-no-drag">
+        <div className="titlebar-no-drag flex items-center gap-2">
+          <DropdownMenu.Root>
+            <Tooltip content="Copy as...">
+              <DropdownMenu.Trigger asChild>
+                <button className="flex items-center gap-0.5 text-text-muted hover:text-text transition-colors">
+                  <CopyIcon className="w-3.5 h-3.5" />
+                  <ChevronDownIcon className="w-3 h-3" />
+                </button>
+              </DropdownMenu.Trigger>
+            </Tooltip>
+            <DropdownMenu.Portal>
+              <DropdownMenu.Content
+                className="min-w-[140px] bg-bg border border-border rounded-md shadow-lg py-1 z-50"
+                sideOffset={5}
+                align="end"
+              >
+                <DropdownMenu.Item
+                  className="px-3 py-1.5 text-sm text-text cursor-pointer outline-none hover:bg-bg-muted focus:bg-bg-muted"
+                  onSelect={handleCopyMarkdown}
+                >
+                  Markdown
+                </DropdownMenu.Item>
+                <DropdownMenu.Item
+                  className="px-3 py-1.5 text-sm text-text cursor-pointer outline-none hover:bg-bg-muted focus:bg-bg-muted"
+                  onSelect={handleCopyPlainText}
+                >
+                  Plain Text
+                </DropdownMenu.Item>
+                <DropdownMenu.Item
+                  className="px-3 py-1.5 text-sm text-text cursor-pointer outline-none hover:bg-bg-muted focus:bg-bg-muted"
+                  onSelect={handleCopyHtml}
+                >
+                  HTML
+                </DropdownMenu.Item>
+              </DropdownMenu.Content>
+            </DropdownMenu.Portal>
+          </DropdownMenu.Root>
           {isSaving || isDirty ? (
             <Tooltip content={isSaving ? "Saving..." : "Unsaved changes"}>
-              <SpinnerIcon className="w-3.5 h-3.5 text-stone-400 animate-spin" />
+              <SpinnerIcon className="w-3.5 h-3.5 text-text-muted animate-spin" />
             </Tooltip>
           ) : (
             <Tooltip content="All changes saved">
-              <CheckIcon className="w-3.5 h-3.5 text-stone-400" />
+              <CheckIcon className="w-3.5 h-3.5 text-text-muted" />
             </Tooltip>
           )}
         </div>
       </div>
 
       {/* Format Bar */}
-      <FormatBar editor={editor} onAddLink={handleAddLink} onAddImage={handleAddImage} />
+      <FormatBar editor={editor} onAddLink={handleAddLink} onAddImage={handleAddImage} onAddWikilink={handleAddWikilink} />
 
       {/* Link Input */}
       {showLinkInput && (
@@ -507,7 +609,7 @@ export function Editor() {
       <div ref={scrollContainerRef} className="flex-1 overflow-y-auto overflow-x-hidden">
         <EditorContent
           editor={editor}
-          className="h-full text-stone-900 dark:text-stone-100"
+          className="h-full text-text"
         />
       </div>
     </div>
