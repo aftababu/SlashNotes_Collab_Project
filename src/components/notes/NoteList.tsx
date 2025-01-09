@@ -1,18 +1,8 @@
-import { useRef, useState, useEffect, useCallback, useMemo, memo } from "react";
+import { useCallback, useMemo, memo } from "react";
 import { Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
 import { useNotes } from "../../context/NotesContext";
 import { ListItem } from "../ui";
-
-// Clean title - remove nbsp and other invisible characters
-function cleanTitle(title: string | undefined): string {
-  if (!title) return "Untitled";
-  const cleaned = title
-    .replace(/&nbsp;/g, " ")
-    .replace(/\u00A0/g, " ")
-    .replace(/\u200B/g, "")
-    .trim();
-  return cleaned || "Untitled";
-}
+import { cleanTitle } from "../../lib/utils";
 
 function formatDate(timestamp: number): string {
   const date = new Date(timestamp * 1000);
@@ -40,7 +30,6 @@ interface NoteItemProps {
   preview?: string;
   modified: number;
   isSelected: boolean;
-  enableAnimation: boolean;
   onSelect: (id: string) => void;
   onContextMenu: (e: React.MouseEvent, id: string) => void;
 }
@@ -51,7 +40,6 @@ const NoteItem = memo(function NoteItem({
   preview,
   modified,
   isSelected,
-  enableAnimation,
   onSelect,
   onContextMenu,
 }: NoteItemProps) {
@@ -69,7 +57,6 @@ const NoteItem = memo(function NoteItem({
       isSelected={isSelected}
       onClick={handleClick}
       onContextMenu={handleContextMenu}
-      animateTitle={enableAnimation && isSelected}
     />
   );
 });
@@ -85,10 +72,6 @@ export function NoteList() {
     searchQuery,
     searchResults,
   } = useNotes();
-
-  // Track previous selection to detect switches vs edits
-  const prevSelectedIdRef = useRef<string | null>(null);
-  const [enableAnimation, setEnableAnimation] = useState(false);
 
   const handleContextMenu = useCallback(async (e: React.MouseEvent, noteId: string) => {
     e.preventDefault();
@@ -109,19 +92,6 @@ export function NoteList() {
 
     await menu.popup();
   }, [duplicateNote, deleteNote]);
-
-  // Disable animation when switching notes, enable after a delay
-  useEffect(() => {
-    if (selectedNoteId !== prevSelectedIdRef.current) {
-      // Switched to a different note - disable animation temporarily
-      setEnableAnimation(false);
-      prevSelectedIdRef.current = selectedNoteId;
-
-      // Re-enable animation after a brief delay
-      const timer = setTimeout(() => setEnableAnimation(true), 150);
-      return () => clearTimeout(timer);
-    }
-  }, [selectedNoteId]);
 
   // Memoize display items to prevent recalculation on every render
   const displayItems = useMemo(() => {
@@ -170,7 +140,6 @@ export function NoteList() {
           preview={item.preview}
           modified={item.modified}
           isSelected={selectedNoteId === item.id}
-          enableAnimation={enableAnimation}
           onSelect={selectNote}
           onContextMenu={handleContextMenu}
         />

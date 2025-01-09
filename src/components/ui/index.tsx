@@ -1,10 +1,8 @@
 import { type ButtonHTMLAttributes, type ReactNode } from "react";
 import { cn } from "../../lib/utils";
 import { Tooltip } from "./Tooltip";
-import { FlipText } from "./FlipText";
 
 // Re-export components
-export { FlipText } from "./FlipText";
 export { Tooltip, TooltipProvider, TooltipRoot, TooltipTrigger, TooltipContent } from "./Tooltip";
 export { Button } from "./Button";
 export { Input } from "./Input";
@@ -75,11 +73,11 @@ interface ListItemProps {
   meta?: string;
   isSelected?: boolean;
   onClick?: () => void;
-  /** Whether to animate title changes */
-  animateTitle?: boolean;
+  /** Optional status icon to display next to meta */
+  statusIcon?: ReactNode;
 }
 
-export function ListItem({ title, subtitle, meta, isSelected = false, onClick, onContextMenu, animateTitle = false }: ListItemProps & { onContextMenu?: (e: React.MouseEvent) => void }) {
+export function ListItem({ title, subtitle, meta, isSelected = false, onClick, onContextMenu, statusIcon }: ListItemProps & { onContextMenu?: (e: React.MouseEvent) => void }) {
   return (
     <div
       onClick={onClick}
@@ -95,22 +93,17 @@ export function ListItem({ title, subtitle, meta, isSelected = false, onClick, o
       )}
     >
       <div className="flex items-start justify-between gap-2">
-        {animateTitle ? (
-          <FlipText
-            text={title}
-            animate={true}
-            className="text-sm font-medium truncate text-text"
-          />
-        ) : (
-          <span className="text-sm font-medium truncate text-text">
-            {title}
-          </span>
-        )}
-        {meta && (
-          <span className="text-xs text-text-muted whitespace-nowrap">
-            {meta}
-          </span>
-        )}
+        <span className="text-sm font-medium truncate text-text">
+          {title}
+        </span>
+        <div className="flex items-center gap-1.5 shrink-0">
+          {statusIcon}
+          {meta && (
+            <span className="text-xs text-text-muted whitespace-nowrap">
+              {meta}
+            </span>
+          )}
+        </div>
       </div>
       <p className={cn(
         "mt-0.5 text-xs line-clamp-1 min-h-[1.25rem]",

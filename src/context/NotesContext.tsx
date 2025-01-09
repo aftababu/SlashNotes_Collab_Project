@@ -5,6 +5,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   type ReactNode,
 } from "react";
 import { listen } from "@tauri-apps/api/event";
@@ -53,6 +54,9 @@ export function NotesProvider({ children }: { children: ReactNode }) {
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
 
+  // Track recently saved note IDs to ignore file-change events from our own saves
+  const recentlySavedRef = useRef<Set<string>>(new Set());
+
   const refreshNotes = useCallback(async () => {
     if (!notesFolder) return;
     try {
@@ -92,9 +96,25 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     async (content: string) => {
       if (!currentNote) return;
       try {
+        // Mark this note as recently saved to ignore file-change events from our own save
+        recentlySavedRef.current.add(currentNote.id);
+
         const updated = await notesService.saveNote(currentNote.id, content);
+
+        // If the note was renamed (ID changed), also mark the new ID
+        if (updated.id !== currentNote.id) {
+          recentlySavedRef.current.add(updated.id);
+        }
+
         setCurrentNote(updated);
         await refreshNotes();
+
+        // Clear the recently saved flag after a short delay
+        // (longer than the file watcher debounce of 500ms)
+        setTimeout(() => {
+          recentlySavedRef.current.delete(currentNote.id);
+          recentlySavedRef.current.delete(updated.id);
+        }, 1000);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to save note");
       }
@@ -193,13 +213,27 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     init();
   }, []);
 
-  // Listen for file change events
+  // Listen for file change events and reload current note if it changed externally
   useEffect(() => {
     let unlisten: (() => void) | undefined;
 
-    listen("file-change", () => {
-      // Refresh notes when files change externally
-      refreshNotes();
+    listen<{ changed_ids: string[] }>("file-change", (event) => {
+      const changedIds = event.payload.changed_ids || [];
+
+      // Filter out notes we recently saved ourselves
+      const externalChanges = changedIds.filter(
+        (id) => !recentlySavedRef.current.has(id)
+      );
+
+      // Only refresh if there are external changes
+      if (externalChanges.length > 0) {
+        refreshNotes();
+
+        // If the currently selected note was changed externally, reload it
+        if (selectedNoteId && externalChanges.includes(selectedNoteId)) {
+          notesService.readNote(selectedNoteId).then(setCurrentNote).catch(() => {});
+        }
+      }
     }).then((fn) => {
       unlisten = fn;
     });
@@ -209,7 +243,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
         unlisten();
       }
     };
-  }, [refreshNotes]);
+  }, [refreshNotes, selectedNoteId]);
 
   // Refresh notes when folder changes
   useEffect(() => {

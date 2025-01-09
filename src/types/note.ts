@@ -39,8 +39,9 @@ export interface EditorFontSettings {
   boldWeight?: number; // 600, 700, 800 for headings and bold text
 }
 
+// Per-folder settings (stored in .scratch/settings.json)
 export interface Settings {
-  notes_folder: string | null;
   theme: ThemeSettings;
   editorFont?: EditorFontSettings;
+  gitEnabled?: boolean;
 }

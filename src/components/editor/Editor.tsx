@@ -1,5 +1,9 @@
 import { useEffect, useRef, useCallback, useState, useMemo } from "react";
-import { useEditor, EditorContent, type Editor as TiptapEditor } from "@tiptap/react";
+import {
+  useEditor,
+  EditorContent,
+  type Editor as TiptapEditor,
+} from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
 import Link from "@tiptap/extension-link";
@@ -15,7 +19,6 @@ import { Wikilink } from "./extensions/Wikilink";
 import { createWikilinkSuggestion } from "./extensions/wikilinkSuggestion";
 import { ToolbarButton, Tooltip, Input } from "../ui";
 import {
-  FileTextIcon,
   BoldIcon,
   ItalicIcon,
   StrikethroughIcon,
@@ -59,7 +62,12 @@ interface FormatBarProps {
 
 // FormatBar must re-render with parent to reflect editor.isActive() state changes
 // (editor instance is mutable, so memo would cause stale active states)
-function FormatBar({ editor, onAddLink, onAddImage, onAddWikilink }: FormatBarProps) {
+function FormatBar({
+  editor,
+  onAddLink,
+  onAddImage,
+  onAddWikilink,
+}: FormatBarProps) {
   if (!editor) return null;
 
   return (
@@ -171,11 +179,7 @@ function FormatBar({ editor, onAddLink, onAddImage, onAddWikilink }: FormatBarPr
       >
         <LinkIcon />
       </ToolbarButton>
-      <ToolbarButton
-        onClick={onAddImage}
-        isActive={false}
-        title="Add Image"
-      >
+      <ToolbarButton onClick={onAddImage} isActive={false} title="Add Image">
         <ImageIcon />
       </ToolbarButton>
       <ToolbarButton
@@ -201,6 +205,7 @@ export function Editor() {
   const isLoadingRef = useRef(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const notesRef = useRef(notes);
+  const editorRef = useRef<TiptapEditor | null>(null);
 
   // Keep notesRef updated with latest notes
   useEffect(() => {
@@ -213,7 +218,7 @@ export function Editor() {
       createWikilinkSuggestion({
         getNotes: () => notesRef.current,
       }),
-    []
+    [],
   );
 
   // Build a map of note titles to IDs for wikilink navigation
@@ -231,7 +236,7 @@ export function Editor() {
     (noteId: string) => {
       selectNote(noteId);
     },
-    [selectNote]
+    [selectNote],
   );
 
   // Handle wikilink creation
@@ -247,7 +252,7 @@ export function Editor() {
         await createNote();
       }
     },
-    [noteTitleToId, selectNote, createNote]
+    [noteTitleToId, selectNote, createNote],
   );
 
   // Get markdown from editor
@@ -261,7 +266,7 @@ export function Editor() {
       // Fallback to plain text
       return editorInstance.getText();
     },
-    []
+    [],
   );
 
   // Auto-save with debounce
@@ -274,6 +279,8 @@ export function Editor() {
       saveTimeoutRef.current = window.setTimeout(async () => {
         setIsSaving(true);
         try {
+          // Track what we're saving to distinguish from external changes
+          lastSavedContentRef.current = newContent;
           await saveNote(newContent);
           setIsDirty(false);
         } finally {
@@ -281,7 +288,7 @@ export function Editor() {
         }
       }, 1000);
     },
-    [saveNote]
+    [saveNote],
   );
 
   const editor = useEditor({
@@ -329,6 +336,40 @@ export function Editor() {
         }
         return false;
       },
+      // Handle markdown paste
+      handlePaste: (_view, event) => {
+        const text = event.clipboardData?.getData("text/plain");
+        if (!text) return false;
+
+        // Check if text looks like markdown (has common markdown patterns)
+        const markdownPatterns = /^#{1,6}\s|^\s*[-*+]\s|^\s*\d+\.\s|^\s*>\s|```|^\s*\[.*\]\(.*\)|^\s*!\[|\*\*.*\*\*|__.*__|~~.*~~|^\s*[-*_]{3,}\s*$/m;
+        if (!markdownPatterns.test(text)) {
+          // Not markdown, let TipTap handle it normally
+          return false;
+        }
+
+        // Parse markdown and insert using editor ref
+        const currentEditor = editorRef.current;
+        if (!currentEditor) return false;
+
+        const manager = currentEditor.storage.markdown?.manager;
+        if (manager && typeof manager.parse === "function") {
+          try {
+            const parsed = manager.parse(text);
+            if (parsed) {
+              currentEditor.commands.insertContent(parsed);
+              return true;
+            }
+          } catch {
+            // Fall back to default paste behavior
+          }
+        }
+
+        return false;
+      },
+    },
+    onCreate: ({ editor: editorInstance }) => {
+      editorRef.current = editorInstance;
     },
     onUpdate: ({ editor: editorInstance }) => {
       if (isLoadingRef.current) return;
@@ -342,6 +383,10 @@ export function Editor() {
 
   // Track which note's content is currently loaded in the editor
   const loadedNoteIdRef = useRef<string | null>(null);
+  // Track the modified timestamp of the loaded content
+  const loadedModifiedRef = useRef<number | null>(null);
+  // Track content we last saved (to detect external vs our own changes)
+  const lastSavedContentRef = useRef<string | null>(null);
 
   // Load note content when the current note changes
   useEffect(() => {
@@ -350,18 +395,52 @@ export function Editor() {
       return;
     }
 
-    // Only load content when we have a NEW note to load
-    // (i.e., currentNote.id differs from what's already loaded)
-    if (currentNote.id === loadedNoteIdRef.current) {
+    const isSameNote = currentNote.id === loadedNoteIdRef.current;
+    const isOurSave = currentNote.content === lastSavedContentRef.current;
+    const isExternalChange = isSameNote &&
+      currentNote.modified !== loadedModifiedRef.current &&
+      !isOurSave;
+
+    // Skip if same note and not an external change
+    if (isSameNote && !isExternalChange) {
+      // Still update the modified ref if it changed (our own save)
+      loadedModifiedRef.current = currentNote.modified;
+      return;
+    }
+
+    // If it's our own save with a rename (ID changed but content matches), just update refs
+    if (isOurSave && !isSameNote) {
+      loadedNoteIdRef.current = currentNote.id;
+      loadedModifiedRef.current = currentNote.modified;
       return;
     }
 
     const isNewNote = loadedNoteIdRef.current === null;
-    const wasEmpty = loadedNoteIdRef.current !== null && currentNote.content?.trim() === "";
+    const wasEmpty = !isNewNote && !isExternalChange && currentNote.content?.trim() === "";
     const loadingNoteId = currentNote.id;
+
     loadedNoteIdRef.current = loadingNoteId;
+    loadedModifiedRef.current = currentNote.modified;
 
     isLoadingRef.current = true;
+
+    // For external changes, just update content without scrolling/blurring
+    if (isExternalChange) {
+      const manager = editor.storage.markdown?.manager;
+      if (manager) {
+        try {
+          const parsed = manager.parse(currentNote.content);
+          editor.commands.setContent(parsed);
+        } catch {
+          editor.commands.setContent(currentNote.content);
+        }
+      } else {
+        editor.commands.setContent(currentNote.content);
+      }
+      setIsDirty(false);
+      isLoadingRef.current = false;
+      return;
+    }
 
     // Scroll to top when switching notes
     scrollContainerRef.current?.scrollTo(0, 0);
@@ -404,7 +483,6 @@ export function Editor() {
     });
   }, [currentNote, editor]);
 
-
   // Cleanup timeout on unmount
   useEffect(() => {
     return () => {
@@ -446,7 +524,12 @@ export function Editor() {
     if (!editor) return;
     const selected = await open({
       multiple: false,
-      filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "gif", "webp", "svg"] }],
+      filters: [
+        {
+          name: "Images",
+          extensions: ["png", "jpg", "jpeg", "gif", "webp", "svg"],
+        },
+      ],
     });
     if (selected) {
       const src = convertFileSrc(selected as string);
@@ -510,7 +593,11 @@ export function Editor() {
         <div className="h-10 shrink-0" data-tauri-drag-region />
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center text-text-muted">
-            <FileTextIcon className="w-16 h-16 mx-auto mb-4" />
+            <img
+              src="/note-dark.png"
+              alt="Note"
+              className="w-36 h-auto mx-auto mb-4 invert dark:invert-0"
+            />
             <p>Select a note or create a new one</p>
           </div>
         </div>
@@ -578,7 +665,12 @@ export function Editor() {
       </div>
 
       {/* Format Bar */}
-      <FormatBar editor={editor} onAddLink={handleAddLink} onAddImage={handleAddImage} onAddWikilink={handleAddWikilink} />
+      <FormatBar
+        editor={editor}
+        onAddLink={handleAddLink}
+        onAddImage={handleAddImage}
+        onAddWikilink={handleAddWikilink}
+      />
 
       {/* Link Input */}
       {showLinkInput && (
@@ -599,18 +691,22 @@ export function Editor() {
             }}
             className="flex-1"
           />
-          <ToolbarButton onClick={handleLinkSubmit} isActive={false} title="Apply link">
+          <ToolbarButton
+            onClick={handleLinkSubmit}
+            isActive={false}
+            title="Apply link"
+          >
             <CheckIcon />
           </ToolbarButton>
         </div>
       )}
 
       {/* TipTap Editor */}
-      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto overflow-x-hidden">
-        <EditorContent
-          editor={editor}
-          className="h-full text-text"
-        />
+      <div
+        ref={scrollContainerRef}
+        className="flex-1 overflow-y-auto overflow-x-hidden"
+      >
+        <EditorContent editor={editor} className="h-full text-text" />
       </div>
     </div>
   );

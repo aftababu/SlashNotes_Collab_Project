@@ -13,6 +13,8 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_clipboard_manager::ClipboardExt;
 use tokio::fs;
 
+mod git;
+
 // Note metadata for list display
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NoteMetadata {
@@ -75,13 +77,20 @@ pub struct EditorFontSettings {
     pub bold_weight: Option<i32>,         // 600, 700, 800 for headings and bold
 }
 
-// App settings
+// App config (stored in app data directory - just the notes folder path)
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct AppConfig {
+    pub notes_folder: Option<String>,
+}
+
+// Per-folder settings (stored in .scratch/settings.json within notes folder)
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Settings {
-    pub notes_folder: Option<String>,
     pub theme: ThemeSettings,
     #[serde(rename = "editorFont")]
     pub editor_font: Option<EditorFontSettings>,
+    #[serde(rename = "gitEnabled")]
+    pub git_enabled: Option<bool>,
 }
 
 // Search result
@@ -233,7 +242,7 @@ impl SearchIndex {
         if notes_folder.exists() {
             for entry in std::fs::read_dir(notes_folder)?.flatten() {
                 let file_path = entry.path();
-                if file_path.extension().map_or(false, |ext| ext == "md") {
+                if file_path.extension().is_some_and(|ext| ext == "md") {
                     if let Ok(content) = std::fs::read_to_string(&file_path) {
                         let metadata = entry.metadata()?;
                         let modified = metadata
@@ -268,7 +277,8 @@ impl SearchIndex {
 
 // App state with improved structure
 pub struct AppState {
-    pub settings: RwLock<Settings>,
+    pub app_config: RwLock<AppConfig>,  // notes_folder path (stored in app data)
+    pub settings: RwLock<Settings>,      // per-folder settings (stored in .scratch/)
     pub notes_cache: RwLock<HashMap<String, NoteMetadata>>,
     pub file_watcher: Mutex<Option<FileWatcherState>>,
     pub search_index: Mutex<Option<SearchIndex>>,
@@ -278,6 +288,7 @@ pub struct AppState {
 impl Default for AppState {
     fn default() -> Self {
         Self {
+            app_config: RwLock::new(AppConfig::default()),
             settings: RwLock::new(Settings::default()),
             notes_cache: RwLock::new(HashMap::new()),
             file_watcher: Mutex::new(None),
@@ -340,11 +351,18 @@ fn generate_preview(content: &str) -> String {
     String::new()
 }
 
-// Get settings file path
-fn get_settings_path(app: &AppHandle) -> Result<PathBuf> {
+// Get app config file path (in app data directory)
+fn get_app_config_path(app: &AppHandle) -> Result<PathBuf> {
     let app_data = app.path().app_data_dir()?;
     std::fs::create_dir_all(&app_data)?;
-    Ok(app_data.join("settings.json"))
+    Ok(app_data.join("config.json"))
+}
+
+// Get per-folder settings file path (in .scratch/ within notes folder)
+fn get_settings_path(notes_folder: &str) -> PathBuf {
+    let scratch_dir = PathBuf::from(notes_folder).join(".scratch");
+    std::fs::create_dir_all(&scratch_dir).ok();
+    scratch_dir.join("settings.json")
 }
 
 // Get search index path
@@ -354,12 +372,34 @@ fn get_search_index_path(app: &AppHandle) -> Result<PathBuf> {
     Ok(app_data.join("search_index"))
 }
 
-// Load settings from disk
-fn load_settings(app: &AppHandle) -> Settings {
-    let path = match get_settings_path(app) {
+// Load app config from disk (notes folder path)
+fn load_app_config(app: &AppHandle) -> AppConfig {
+    let path = match get_app_config_path(app) {
         Ok(p) => p,
-        Err(_) => return Settings::default(),
+        Err(_) => return AppConfig::default(),
     };
+
+    if path.exists() {
+        std::fs::read_to_string(&path)
+            .ok()
+            .and_then(|content| serde_json::from_str(&content).ok())
+            .unwrap_or_default()
+    } else {
+        AppConfig::default()
+    }
+}
+
+// Save app config to disk
+fn save_app_config(app: &AppHandle, config: &AppConfig) -> Result<()> {
+    let path = get_app_config_path(app)?;
+    let content = serde_json::to_string_pretty(config)?;
+    std::fs::write(path, content)?;
+    Ok(())
+}
+
+// Load per-folder settings from disk
+fn load_settings(notes_folder: &str) -> Settings {
+    let path = get_settings_path(notes_folder);
 
     if path.exists() {
         std::fs::read_to_string(&path)
@@ -371,9 +411,9 @@ fn load_settings(app: &AppHandle) -> Settings {
     }
 }
 
-// Save settings to disk
-fn save_settings(app: &AppHandle, settings: &Settings) -> Result<()> {
-    let path = get_settings_path(app)?;
+// Save per-folder settings to disk
+fn save_settings(notes_folder: &str, settings: &Settings) -> Result<()> {
+    let path = get_settings_path(notes_folder);
     let content = serde_json::to_string_pretty(settings)?;
     std::fs::write(path, content)?;
     Ok(())
@@ -391,9 +431,9 @@ fn cleanup_debounce_map(map: &Mutex<HashMap<PathBuf, Instant>>) {
 #[tauri::command]
 fn get_notes_folder(state: State<AppState>) -> Option<String> {
     state
-        .settings
+        .app_config
         .read()
-        .expect("settings read lock")
+        .expect("app_config read lock")
         .notes_folder
         .clone()
 }
@@ -411,16 +451,29 @@ fn set_notes_folder(app: AppHandle, path: String, state: State<AppState>) -> Res
     let assets = path_buf.join("assets");
     std::fs::create_dir_all(&assets).map_err(|e| e.to_string())?;
 
-    // Update settings
+    // Create .scratch config folder
+    let scratch_dir = path_buf.join(".scratch");
+    std::fs::create_dir_all(&scratch_dir).map_err(|e| e.to_string())?;
+
+    // Load per-folder settings (starts fresh with defaults if none exist)
+    let settings = load_settings(&path);
+
+    // Update app config
     {
-        let mut settings = state.settings.write().expect("settings write lock");
-        settings.notes_folder = Some(path.clone());
+        let mut app_config = state.app_config.write().expect("app_config write lock");
+        app_config.notes_folder = Some(path.clone());
     }
 
-    // Save to disk
+    // Update settings in memory
     {
-        let settings = state.settings.read().expect("settings read lock");
-        save_settings(&app, &settings).map_err(|e| e.to_string())?;
+        let mut current_settings = state.settings.write().expect("settings write lock");
+        *current_settings = settings;
+    }
+
+    // Save app config to disk
+    {
+        let app_config = state.app_config.read().expect("app_config read lock");
+        save_app_config(&app, &app_config).map_err(|e| e.to_string())?;
     }
 
     // Initialize search index
@@ -438,8 +491,8 @@ fn set_notes_folder(app: AppHandle, path: String, state: State<AppState>) -> Res
 #[tauri::command]
 async fn list_notes(state: State<'_, AppState>) -> Result<Vec<NoteMetadata>, String> {
     let folder = {
-        let settings = state.settings.read().expect("settings read lock");
-        settings
+        let app_config = state.app_config.read().expect("app_config read lock");
+        app_config
             .notes_folder
             .clone()
             .ok_or("Notes folder not set")?
@@ -457,7 +510,7 @@ async fn list_notes(state: State<'_, AppState>) -> Result<Vec<NoteMetadata>, Str
 
     while let Some(entry) = entries.next_entry().await.map_err(|e| e.to_string())? {
         let file_path = entry.path();
-        if file_path.extension().map_or(false, |ext| ext == "md") {
+        if file_path.extension().is_some_and(|ext| ext == "md") {
             // Get metadata first (single syscall)
             if let Ok(metadata) = entry.metadata().await {
                 if let Ok(content) = fs::read_to_string(&file_path).await {
@@ -503,8 +556,8 @@ async fn list_notes(state: State<'_, AppState>) -> Result<Vec<NoteMetadata>, Str
 #[tauri::command]
 async fn read_note(id: String, state: State<'_, AppState>) -> Result<Note, String> {
     let folder = {
-        let settings = state.settings.read().expect("settings read lock");
-        settings
+        let app_config = state.app_config.read().expect("app_config read lock");
+        app_config
             .notes_folder
             .clone()
             .ok_or("Notes folder not set")?
@@ -545,8 +598,8 @@ async fn save_note(
     state: State<'_, AppState>,
 ) -> Result<Note, String> {
     let folder = {
-        let settings = state.settings.read().expect("settings read lock");
-        settings
+        let app_config = state.app_config.read().expect("app_config read lock");
+        app_config
             .notes_folder
             .clone()
             .ok_or("Notes folder not set")?
@@ -554,31 +607,53 @@ async fn save_note(
     let folder_path = PathBuf::from(&folder);
 
     let title = extract_title(&content);
+    let desired_id = sanitize_filename(&title);
 
-    // Determine the file ID and path
-    let (note_id, file_path) = if let Some(existing_id) = id {
-        (
-            existing_id.clone(),
-            folder_path.join(format!("{}.md", existing_id)),
-        )
+    // Determine the file ID and path, handling renames
+    let (final_id, file_path, old_id) = if let Some(existing_id) = id {
+        let old_file_path = folder_path.join(format!("{}.md", existing_id));
+
+        // Check if we should rename the file
+        if existing_id != desired_id {
+            // Find a unique name for the new ID
+            let mut new_id = desired_id.clone();
+            let mut counter = 1;
+
+            while new_id != existing_id && folder_path.join(format!("{}.md", new_id)).exists() {
+                new_id = format!("{}-{}", desired_id, counter);
+                counter += 1;
+            }
+
+            let new_file_path = folder_path.join(format!("{}.md", new_id));
+            // Track old_file_path for cleanup after successful write
+            (new_id, new_file_path, Some((existing_id, old_file_path)))
+        } else {
+            (existing_id, old_file_path, None)
+        }
     } else {
-        // Generate new ID from title
-        let base_id = sanitize_filename(&title);
-        let mut final_id = base_id.clone();
+        // New note - generate unique ID from title
+        let mut new_id = desired_id.clone();
         let mut counter = 1;
 
-        while folder_path.join(format!("{}.md", final_id)).exists() {
-            final_id = format!("{}-{}", base_id, counter);
+        while folder_path.join(format!("{}.md", new_id)).exists() {
+            new_id = format!("{}-{}", desired_id, counter);
             counter += 1;
         }
 
-        (final_id.clone(), folder_path.join(format!("{}.md", final_id)))
+        (new_id.clone(), folder_path.join(format!("{}.md", new_id)), None)
     };
 
-    // Write the file
+    // Write the file to the new path
     fs::write(&file_path, &content)
         .await
         .map_err(|e| e.to_string())?;
+
+    // Delete old file AFTER successful write (to prevent data loss)
+    if let Some((_, ref old_file_path)) = old_id {
+        if old_file_path.exists() && *old_file_path != file_path {
+            let _ = fs::remove_file(old_file_path).await;
+        }
+    }
 
     let metadata = fs::metadata(&file_path)
         .await
@@ -590,16 +665,25 @@ async fn save_note(
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0);
 
-    // Update search index
+    // Update search index (delete old entry if renamed, then add new)
     {
         let index = state.search_index.lock().expect("search index mutex");
         if let Some(ref search_index) = *index {
-            let _ = search_index.index_note(&note_id, &title, &content, modified);
+            if let Some((ref old_id_str, _)) = old_id {
+                let _ = search_index.delete_note(old_id_str);
+            }
+            let _ = search_index.index_note(&final_id, &title, &content, modified);
         }
     }
 
+    // Update cache (remove old entry if renamed)
+    if let Some((ref old_id_str, _)) = old_id {
+        let mut cache = state.notes_cache.write().expect("cache write lock");
+        cache.remove(old_id_str);
+    }
+
     Ok(Note {
-        id: note_id,
+        id: final_id,
         title,
         content,
         path: file_path.to_string_lossy().into_owned(),
@@ -610,8 +694,8 @@ async fn save_note(
 #[tauri::command]
 async fn delete_note(id: String, state: State<'_, AppState>) -> Result<(), String> {
     let folder = {
-        let settings = state.settings.read().expect("settings read lock");
-        settings
+        let app_config = state.app_config.read().expect("app_config read lock");
+        app_config
             .notes_folder
             .clone()
             .ok_or("Notes folder not set")?
@@ -644,8 +728,8 @@ async fn delete_note(id: String, state: State<'_, AppState>) -> Result<(), Strin
 #[tauri::command]
 async fn create_note(state: State<'_, AppState>) -> Result<Note, String> {
     let folder = {
-        let settings = state.settings.read().expect("settings read lock");
-        settings
+        let app_config = state.app_config.read().expect("app_config read lock");
+        app_config
             .notes_folder
             .clone()
             .ok_or("Notes folder not set")?
@@ -698,17 +782,21 @@ fn get_settings(state: State<AppState>) -> Settings {
 
 #[tauri::command]
 fn update_settings(
-    app: AppHandle,
     new_settings: Settings,
     state: State<AppState>,
 ) -> Result<(), String> {
+    let folder = {
+        let app_config = state.app_config.read().expect("app_config read lock");
+        app_config.notes_folder.clone().ok_or("Notes folder not set")?
+    };
+
     {
         let mut settings = state.settings.write().expect("settings write lock");
         *settings = new_settings;
     }
 
     let settings = state.settings.read().expect("settings read lock");
-    save_settings(&app, &settings).map_err(|e| e.to_string())?;
+    save_settings(&folder, &settings).map_err(|e| e.to_string())?;
 
     Ok(())
 }
@@ -772,6 +860,7 @@ fn fallback_search(query: &str, state: &State<AppState>) -> Result<Vec<SearchRes
 struct FileChangeEvent {
     kind: String,
     path: String,
+    changed_ids: Vec<String>,
 }
 
 fn setup_file_watcher(
@@ -786,7 +875,8 @@ fn setup_file_watcher(
         move |res: Result<notify::Event, notify::Error>| {
             if let Ok(event) = res {
                 for path in event.paths.iter() {
-                    if path.extension().map_or(false, |ext| ext == "md") {
+                    // Handle .md files
+                    if path.extension().is_some_and(|ext| ext == "md") {
                         // Debounce with cleanup
                         {
                             let mut map = debounce_map.lock().expect("debounce map mutex");
@@ -812,11 +902,19 @@ fn setup_file_watcher(
                             _ => continue,
                         };
 
+                        // Extract note ID from filename
+                        let note_id = path
+                            .file_stem()
+                            .and_then(|s| s.to_str())
+                            .map(|s| s.to_string())
+                            .unwrap_or_default();
+
                         let _ = app_handle.emit(
                             "file-change",
                             FileChangeEvent {
                                 kind: kind.to_string(),
                                 path: path.to_string_lossy().into_owned(),
+                                changed_ids: vec![note_id],
                             },
                         );
                     }
@@ -828,6 +926,8 @@ fn setup_file_watcher(
     .map_err(|e| e.to_string())?;
 
     let mut watcher = watcher;
+
+    // Watch the notes folder for .md files
     watcher
         .watch(&folder_path, RecursiveMode::NonRecursive)
         .map_err(|e| e.to_string())?;
@@ -838,8 +938,8 @@ fn setup_file_watcher(
 #[tauri::command]
 fn start_file_watcher(app: AppHandle, state: State<AppState>) -> Result<(), String> {
     let folder = {
-        let settings = state.settings.read().expect("settings read lock");
-        settings
+        let app_config = state.app_config.read().expect("app_config read lock");
+        app_config
             .notes_folder
             .clone()
             .ok_or("Notes folder not set")?
@@ -848,7 +948,11 @@ fn start_file_watcher(app: AppHandle, state: State<AppState>) -> Result<(), Stri
     // Clean up debounce map before starting
     cleanup_debounce_map(&state.debounce_map);
 
-    let watcher_state = setup_file_watcher(app, &folder, Arc::clone(&state.debounce_map))?;
+    let watcher_state = setup_file_watcher(
+        app,
+        &folder,
+        Arc::clone(&state.debounce_map),
+    )?;
 
     let mut file_watcher = state.file_watcher.lock().expect("file watcher mutex");
     *file_watcher = Some(watcher_state);
@@ -864,8 +968,8 @@ fn copy_to_clipboard(app: AppHandle, text: String) -> Result<(), String> {
 #[tauri::command]
 fn rebuild_search_index(app: AppHandle, state: State<AppState>) -> Result<(), String> {
     let folder = {
-        let settings = state.settings.read().expect("settings read lock");
-        settings
+        let app_config = state.app_config.read().expect("app_config read lock");
+        app_config
             .notes_folder
             .clone()
             .ok_or("Notes folder not set")?
@@ -885,6 +989,94 @@ fn rebuild_search_index(app: AppHandle, state: State<AppState>) -> Result<(), St
     Ok(())
 }
 
+// Git commands - run blocking git operations off the main thread
+
+#[tauri::command]
+async fn git_is_available() -> bool {
+    tauri::async_runtime::spawn_blocking(git::is_available)
+        .await
+        .unwrap_or(false)
+}
+
+#[tauri::command]
+async fn git_get_status(state: State<'_, AppState>) -> Result<git::GitStatus, String> {
+    let folder = {
+        let app_config = state.app_config.read().expect("app_config read lock");
+        app_config.notes_folder.clone()
+    };
+
+    match folder {
+        Some(path) => {
+            tauri::async_runtime::spawn_blocking(move || {
+                git::get_status(&PathBuf::from(path))
+            })
+            .await
+            .map_err(|e| e.to_string())
+        }
+        None => Ok(git::GitStatus::default()),
+    }
+}
+
+#[tauri::command]
+async fn git_init_repo(state: State<'_, AppState>) -> Result<(), String> {
+    let folder = {
+        let app_config = state.app_config.read().expect("app_config read lock");
+        app_config.notes_folder.clone().ok_or("Notes folder not set")?
+    };
+
+    tauri::async_runtime::spawn_blocking(move || {
+        git::git_init(&PathBuf::from(folder))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn git_commit(message: String, state: State<'_, AppState>) -> Result<git::GitResult, String> {
+    let folder = {
+        let app_config = state.app_config.read().expect("app_config read lock");
+        app_config.notes_folder.clone()
+    };
+
+    match folder {
+        Some(path) => {
+            tauri::async_runtime::spawn_blocking(move || {
+                git::commit_all(&PathBuf::from(path), &message)
+            })
+            .await
+            .map_err(|e| e.to_string())
+        }
+        None => Ok(git::GitResult {
+            success: false,
+            message: None,
+            error: Some("Notes folder not set".to_string()),
+        }),
+    }
+}
+
+#[tauri::command]
+async fn git_push(state: State<'_, AppState>) -> Result<git::GitResult, String> {
+    let folder = {
+        let app_config = state.app_config.read().expect("app_config read lock");
+        app_config.notes_folder.clone()
+    };
+
+    match folder {
+        Some(path) => {
+            tauri::async_runtime::spawn_blocking(move || {
+                git::push(&PathBuf::from(path))
+            })
+            .await
+            .map_err(|e| e.to_string())
+        }
+        None => Ok(git::GitResult {
+            success: false,
+            message: None,
+            error: Some("Notes folder not set".to_string()),
+        }),
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -893,17 +1085,23 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .setup(|app| {
-            // Load settings on startup
-            let settings = load_settings(app.handle());
+            // Load app config on startup (contains notes folder path)
+            let app_config = load_app_config(app.handle());
+
+            // Load per-folder settings if notes folder is set
+            let settings = if let Some(ref folder) = app_config.notes_folder {
+                load_settings(folder)
+            } else {
+                Settings::default()
+            };
 
             // Initialize search index if notes folder is set
-            let search_index = if let Some(ref folder) = settings.notes_folder {
+            let search_index = if let Some(ref folder) = app_config.notes_folder {
                 if let Ok(index_path) = get_search_index_path(app.handle()) {
                     SearchIndex::new(&index_path)
                         .ok()
-                        .map(|idx| {
+                        .inspect(|idx| {
                             let _ = idx.rebuild_index(&PathBuf::from(folder));
-                            idx
                         })
                 } else {
                     None
@@ -913,6 +1111,7 @@ pub fn run() {
             };
 
             let state = AppState {
+                app_config: RwLock::new(app_config),
                 settings: RwLock::new(settings),
                 notes_cache: RwLock::new(HashMap::new()),
                 file_watcher: Mutex::new(None),
@@ -936,6 +1135,11 @@ pub fn run() {
             start_file_watcher,
             rebuild_search_index,
             copy_to_clipboard,
+            git_is_available,
+            git_get_status,
+            git_init_repo,
+            git_commit,
+            git_push,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
