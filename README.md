@@ -1,22 +1,18 @@
 # Scratch
 
-A minimalist markdown note-taking app for Mac, built with Tauri.
+A minimalist, offline-first markdown note-taking app for Mac.
 
 ![Scratch](https://img.shields.io/badge/platform-macOS-lightgrey)
 
 ## Features
 
-- **Native Mac app** - Fast, lightweight, and feels right at home on macOS
-- **Markdown-first** - Notes stored as plain `.md` files you own
-- **WYSIWYG editing** - Rich text editing with TipTap, saved as markdown
-- **Full-text search** - Blazing fast search powered by Tantivy
-- **Auto-save** - Changes saved automatically as you type
-- **Live reload** - Detects external file changes (great for AI-assisted editing)
+- **Offline-first** - No cloud, no account, no internet required
+- **Markdown-based** - Notes stored as plain `.md` files you own
+- **WYSIWYG editing** - Rich text editing that saves as markdown
+- **Works with AI agents** - Live-syncing markdown files perfect for external editing
+- **Full-text search** - Fast search with command palette
 - **Git integration** - Optional version control for your notes
-- **Dark mode** - Follows system theme or set manually
-- **Typography settings** - Customize font family, size, and weight
-- **Copy as** - Export notes as Markdown, Plain Text, or HTML
-- **Command palette** - Quick access to actions with `Cmd+P`
+- **Customizable** - Theme (light/dark/system) and editor typography settings
 
 ## Installation
 
@@ -45,31 +41,23 @@ npm run tauri build
 
 The built app will be in `src-tauri/target/release/bundle/`.
 
-## Usage
-
-1. On first launch, select a folder to store your notes
-2. Create notes with `Cmd+N`
-3. Write in markdown - formatting is rendered as you type
-4. Search notes with the search bar or `Cmd+P`
-
 ## Keyboard Shortcuts
 
-| Shortcut | Action          |
-| -------- | --------------- |
-| `Cmd+N`  | New note        |
-| `Cmd+P`  | Command palette |
-| `Cmd+K`  | Add/edit link   |
-| `Cmd+B`  | Bold            |
-| `Cmd+I`  | Italic          |
-| `↑/↓`    | Navigate notes  |
+Scratch is designed to be usable without a mouse. Here are the essentials to get started:
 
-## Tech Stack
+| Shortcut  | Action          |
+| --------- | --------------- |
+| `Cmd+N`   | New note        |
+| `Cmd+P`   | Command palette |
+| `Cmd+K`   | Add/edit link   |
+| `Cmd+B/I` | Bold/Italic     |
+| `↑/↓`     | Navigate notes  |
 
-- [Tauri v2](https://tauri.app/) - Native app framework
-- [React](https://react.dev/) - UI framework
-- [TipTap](https://tiptap.dev/) - Rich text editor
-- [Tailwind CSS](https://tailwindcss.com/) - Styling
-- [Tantivy](https://github.com/quickwit-oss/tantivy) - Full-text search
+Many more shortcuts and features are available in the app—explore via the command palette (`Cmd+P`).
+
+## Built With
+
+[Tauri](https://tauri.app/) · [React](https://react.dev/) · [TipTap](https://tiptap.dev/) · [Tailwind CSS](https://tailwindcss.com/) · [Tantivy](https://github.com/quickwit-oss/tantivy)
 
 ## License
 

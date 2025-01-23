@@ -8,8 +8,8 @@
 :root {
   --color-bg: #ffffff;
   --color-bg-secondary: #fafaf9;
-  --color-bg-muted: rgba(28, 25, 23, 0.05);
-  --color-bg-emphasis: rgba(28, 25, 23, 0.08);
+  --color-bg-muted: rgba(28, 25, 23, 0.06);
+  --color-bg-emphasis: rgba(28, 25, 23, 0.09);
   --color-text: #1c1917;
   --color-text-muted: #78716c;
   --color-text-inverse: #fafaf9;

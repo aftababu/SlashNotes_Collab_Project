@@ -1,4 +1,4 @@
-import { forwardRef, useImperativeHandle, useRef, useEffect } from "react";
+import { useRef, useEffect } from "react";
 import { CheckIcon, XIcon, LinkOffIcon } from "../icons";
 
 export interface LinkEditorProps {
@@ -8,41 +8,18 @@ export interface LinkEditorProps {
   onCancel: () => void;
 }
 
-export interface LinkEditorRef {
-  onKeyDown: (props: { event: KeyboardEvent }) => boolean;
-}
+export const LinkEditor = ({ initialUrl, onSubmit, onRemove, onCancel }: LinkEditorProps) => {
+  const hasExistingLink = !!initialUrl;
+  const inputRef = useRef<HTMLInputElement>(null);
 
-export const LinkEditor = forwardRef<LinkEditorRef, LinkEditorProps>(
-  ({ initialUrl, onSubmit, onRemove, onCancel }, ref) => {
-    const hasExistingLink = !!initialUrl;
-    const inputRef = useRef<HTMLInputElement>(null);
-
-    // Focus input on mount
-    useEffect(() => {
-      // Small delay to ensure the popup is positioned before focusing
-      requestAnimationFrame(() => {
-        inputRef.current?.focus();
-        inputRef.current?.select();
-      });
-    }, []);
-
-    useImperativeHandle(
-      ref,
-      () => ({
-        onKeyDown: ({ event }) => {
-          if (event.key === "Escape") {
-            onCancel();
-            return true;
-          }
-          if (event.key === "Enter") {
-            onSubmit(inputRef.current?.value || "");
-            return true;
-          }
-          return false;
-        },
-      }),
-      [onSubmit, onCancel]
-    );
+  // Focus input on mount
+  useEffect(() => {
+    // Small delay to ensure the popup is positioned before focusing
+    requestAnimationFrame(() => {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    });
+  }, []);
 
     const handleSubmit = () => {
       onSubmit(inputRef.current?.value || "");
@@ -93,8 +70,5 @@ export const LinkEditor = forwardRef<LinkEditorRef, LinkEditorProps>(
           <XIcon className="w-3.5 h-3.5" />
         </button>
       </div>
-    );
-  }
-);
-
-LinkEditor.displayName = "LinkEditor";
+  );
+};

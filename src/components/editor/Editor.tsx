@@ -472,9 +472,6 @@ export function Editor({ onToggleSidebar, sidebarVisible }: EditorProps) {
       return;
     }
 
-    // Scroll to top when switching notes
-    scrollContainerRef.current?.scrollTo(0, 0);
-
     // Blur editor before setting content to prevent ghost cursor
     editor.commands.blur();
 
@@ -494,6 +491,9 @@ export function Editor({ onToggleSidebar, sidebarVisible }: EditorProps) {
 
     setIsDirty(false);
 
+    // Scroll to top after content is set (must be after setContent to work reliably)
+    scrollContainerRef.current?.scrollTo(0, 0);
+
     // Capture note ID to check in RAF callback - prevents race condition
     // if user switches notes quickly before RAF fires
     requestAnimationFrame(() => {
@@ -501,6 +501,9 @@ export function Editor({ onToggleSidebar, sidebarVisible }: EditorProps) {
       if (loadedNoteIdRef.current !== loadingNoteId) {
         return;
       }
+
+      // Scroll again in RAF to ensure it takes effect after DOM updates
+      scrollContainerRef.current?.scrollTo(0, 0);
 
       isLoadingRef.current = false;
 
