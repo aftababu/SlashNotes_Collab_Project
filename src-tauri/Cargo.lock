@@ -3,6 +3,24 @@
 version = 4
 
 [[package]]
+name = "Scratch"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "notify",
+ "serde",
+ "serde_json",
+ "tantivy",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-clipboard-manager",
+ "tauri-plugin-dialog",
+ "tauri-plugin-fs",
+ "tauri-plugin-opener",
+ "tokio",
+]
+
+[[package]]
 name = "adler2"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3576,24 +3594,6 @@ name = "scopeguard"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
-
-[[package]]
-name = "scratch"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "notify",
- "serde",
- "serde_json",
- "tantivy",
- "tauri",
- "tauri-build",
- "tauri-plugin-clipboard-manager",
- "tauri-plugin-dialog",
- "tauri-plugin-fs",
- "tauri-plugin-opener",
- "tokio",
-]
 
 [[package]]
 name = "selectors"

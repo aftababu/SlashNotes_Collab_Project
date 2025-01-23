@@ -63,11 +63,7 @@ interface FormatBarProps {
 
 // FormatBar must re-render with parent to reflect editor.isActive() state changes
 // (editor instance is mutable, so memo would cause stale active states)
-function FormatBar({
-  editor,
-  onAddLink,
-  onAddImage,
-}: FormatBarProps) {
+function FormatBar({ editor, onAddLink, onAddImage }: FormatBarProps) {
   if (!editor) return null;
 
   return (
@@ -223,7 +219,7 @@ export function Editor({ onToggleSidebar, sidebarVisible }: EditorProps) {
       // Fallback to plain text
       return editorInstance.getText();
     },
-    [],
+    []
   );
 
   // Auto-save with debounce
@@ -255,7 +251,7 @@ export function Editor({ onToggleSidebar, sidebarVisible }: EditorProps) {
         }
       }, 1000);
     },
-    [saveNote, currentNote?.id],
+    [saveNote, currentNote?.id]
   );
 
   const editor = useEditor({
@@ -321,7 +317,8 @@ export function Editor({ onToggleSidebar, sidebarVisible }: EditorProps) {
         if (!text) return false;
 
         // Check if text looks like markdown (has common markdown patterns)
-        const markdownPatterns = /^#{1,6}\s|^\s*[-*+]\s|^\s*\d+\.\s|^\s*>\s|```|^\s*\[.*\]\(.*\)|^\s*!\[|\*\*.*\*\*|__.*__|~~.*~~|^\s*[-*_]{3,}\s*$/m;
+        const markdownPatterns =
+          /^#{1,6}\s|^\s*[-*+]\s|^\s*\d+\.\s|^\s*>\s|```|^\s*\[.*\]\(.*\)|^\s*!\[|\*\*.*\*\*|__.*__|~~.*~~|^\s*[-*_]{3,}\s*$/m;
         if (!markdownPatterns.test(text)) {
           // Not markdown, let TipTap handle it normally
           return false;
@@ -377,10 +374,13 @@ export function Editor({ onToggleSidebar, sidebarVisible }: EditorProps) {
     const isSameNote = currentNote.id === loadedNoteIdRef.current;
     const lastSave = lastSaveRef.current;
     // Check if this update is from our own save (same note we saved, content matches)
-    const isOurSave = lastSave &&
-      (lastSave.noteId === currentNote.id || lastSave.noteId === loadedNoteIdRef.current) &&
+    const isOurSave =
+      lastSave &&
+      (lastSave.noteId === currentNote.id ||
+        lastSave.noteId === loadedNoteIdRef.current) &&
       lastSave.content === currentNote.content;
-    const isExternalChange = isSameNote &&
+    const isExternalChange =
+      isSameNote &&
       currentNote.modified !== loadedModifiedRef.current &&
       !isOurSave;
 
@@ -393,7 +393,11 @@ export function Editor({ onToggleSidebar, sidebarVisible }: EditorProps) {
 
     // If it's our own save with a rename (ID changed but content matches), just update refs
     // This happens when the title changes and the file gets renamed
-    if (isOurSave && !isSameNote && lastSave?.noteId === loadedNoteIdRef.current) {
+    if (
+      isOurSave &&
+      !isSameNote &&
+      lastSave?.noteId === loadedNoteIdRef.current
+    ) {
       loadedNoteIdRef.current = currentNote.id;
       loadedModifiedRef.current = currentNote.modified;
       lastSaveRef.current = null; // Clear after handling rename
@@ -401,7 +405,8 @@ export function Editor({ onToggleSidebar, sidebarVisible }: EditorProps) {
     }
 
     const isNewNote = loadedNoteIdRef.current === null;
-    const wasEmpty = !isNewNote && !isExternalChange && currentNote.content?.trim() === "";
+    const wasEmpty =
+      !isNewNote && !isExternalChange && currentNote.content?.trim() === "";
     const loadingNoteId = currentNote.id;
 
     loadedNoteIdRef.current = loadingNoteId;
@@ -559,7 +564,8 @@ export function Editor({ onToggleSidebar, sidebarVisible }: EditorProps) {
 
     // Create tippy popup
     linkPopupRef.current = tippy(document.body, {
-      getReferenceClientRect: () => virtualElement.getBoundingClientRect() as DOMRect,
+      getReferenceClientRect: () =>
+        virtualElement.getBoundingClientRect() as DOMRect,
       appendTo: () => document.body,
       content: component.element,
       showOnCreate: true,
@@ -638,11 +644,16 @@ export function Editor({ onToggleSidebar, sidebarVisible }: EditorProps) {
     return (
       <div className="flex-1 flex flex-col bg-bg">
         {/* Drag region */}
-        <div className="h-10 shrink-0 flex items-end px-4 pb-1" data-tauri-drag-region>
+        <div
+          className="h-10 shrink-0 flex items-end px-4 pb-1"
+          data-tauri-drag-region
+        >
           {onToggleSidebar && (
             <IconButton
               onClick={onToggleSidebar}
-              title={sidebarVisible ? "Hide sidebar (⌘\\)" : "Show sidebar (⌘\\)"}
+              title={
+                sidebarVisible ? "Hide sidebar (⌘\\)" : "Show sidebar (⌘\\)"
+              }
               className="titlebar-no-drag"
             >
               <PanelLeftIcon className="w-4 h-4" />
@@ -656,11 +667,9 @@ export function Editor({ onToggleSidebar, sidebarVisible }: EditorProps) {
               alt="Note"
               className="w-48 h-auto mx-auto mb-2 invert dark:invert-0"
             />
-            <h1
-            className="text-2xl text-text font-serif mb-1 tracking-[-0.01em] "
-          >
-            A blank page awaits
-          </h1>
+            <h1 className="text-2xl text-text font-serif mb-1 tracking-[-0.01em] ">
+              What's on your mind?
+            </h1>
             <p>Pick up where you left off, or start something new</p>
             <Button
               onClick={createNote}
@@ -687,7 +696,9 @@ export function Editor({ onToggleSidebar, sidebarVisible }: EditorProps) {
           {onToggleSidebar && (
             <IconButton
               onClick={onToggleSidebar}
-              title={sidebarVisible ? "Hide sidebar (⌘\\)" : "Show sidebar (⌘\\)"}
+              title={
+                sidebarVisible ? "Hide sidebar (⌘\\)" : "Show sidebar (⌘\\)"
+              }
             >
               <PanelLeftIcon className="w-4 h-4" />
             </IconButton>
