@@ -22,30 +22,36 @@ A minimalist, offline-first markdown note-taking app for Mac.
 
 ## Installation
 
-### From Source
-
-Prerequisites:
-
-- Node.js 18+
-- Rust 1.70+
-- Xcode Command Line Tools
+### Homebrew (Recommended)
 
 ```bash
-# Clone the repository
-git clone https://github.com/yourusername/scratch.git
-cd scratch
-
-# Install dependencies
-npm install
-
-# Run in development mode
-npm run tauri dev
-
-# Build for production
-npm run tauri build
+brew tap erictli/tap
+brew install --cask erictli/tap/scratch
 ```
 
-The built app will be in `src-tauri/target/release/bundle/`.
+### Manual Download
+
+1. Download the latest DMG from [Releases](https://github.com/erictli/scratch/releases)
+2. Open the DMG and drag Scratch to Applications
+3. Open Terminal and run:
+   ```bash
+   xattr -cr /Applications/Scratch.app
+   ```
+4. Open Scratch from Applications
+
+> The `xattr` step is required because the app isn't signed with an Apple Developer certificate yet.
+
+### From Source
+
+Prerequisites: Node.js 18+, Rust 1.70+, Xcode Command Line Tools
+
+```bash
+git clone https://github.com/erictli/scratch.git
+cd scratch
+npm install
+npm run tauri dev      # Development
+npm run tauri build    # Production build
+```
 
 ## Keyboard Shortcuts
 
