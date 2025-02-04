@@ -11,6 +11,7 @@ import Link from "@tiptap/extension-link";
 import Image from "@tiptap/extension-image";
 import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
+import { TableKit } from "@tiptap/extension-table";
 import { Markdown } from "@tiptap/markdown";
 import { Extension } from "@tiptap/core";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
@@ -507,6 +508,14 @@ export function Editor({ onToggleSidebar, sidebarVisible }: EditorProps) {
       TaskItem.configure({
         nested: true,
       }),
+      TableKit.configure({
+        table: {
+          resizable: false,
+          HTMLAttributes: {
+            class: "not-prose",
+          },
+        },
+      }),
       Markdown.configure({}),
       SearchHighlight.configure({
         matches: [],
@@ -584,7 +593,7 @@ export function Editor({ onToggleSidebar, sidebarVisible }: EditorProps) {
 
         // Check if text looks like markdown (has common markdown patterns)
         const markdownPatterns =
-          /^#{1,6}\s|^\s*[-*+]\s|^\s*\d+\.\s|^\s*>\s|```|^\s*\[.*\]\(.*\)|^\s*!\[|\*\*.*\*\*|__.*__|~~.*~~|^\s*[-*_]{3,}\s*$/m;
+          /^#{1,6}\s|^\s*[-*+]\s|^\s*\d+\.\s|^\s*>\s|```|^\s*\[.*\]\(.*\)|^\s*!\[|\*\*.*\*\*|__.*__|~~.*~~|^\s*[-*_]{3,}\s*$|^\|.+\|$/m;
         if (!markdownPatterns.test(text)) {
           // Not markdown, let TipTap handle it normally
           return false;
