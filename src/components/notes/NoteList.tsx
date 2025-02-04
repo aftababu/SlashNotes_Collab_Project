@@ -1,5 +1,5 @@
 import { useCallback, useMemo, memo, useEffect, useRef, useState } from "react";
-import { Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
+import { Menu, MenuItem } from "@tauri-apps/api/menu";
 import { useNotes } from "../../context/NotesContext";
 import {
   ListItem,
@@ -13,6 +13,8 @@ import {
   AlertDialogTitle,
 } from "../ui";
 import { cleanTitle } from "../../lib/utils";
+import * as notesService from "../../services/notes";
+import type { Settings } from "../../types/note";
 
 function formatDate(timestamp: number): string {
   const date = new Date(timestamp * 1000);
@@ -65,6 +67,7 @@ interface NoteItemProps {
   preview?: string;
   modified: number;
   isSelected: boolean;
+  isPinned: boolean;
   onSelect: (id: string) => void;
   onContextMenu: (e: React.MouseEvent, id: string) => void;
 }
@@ -75,6 +78,7 @@ const NoteItem = memo(function NoteItem({
   preview,
   modified,
   isSelected,
+  isPinned,
   onSelect,
   onContextMenu,
 }: NoteItemProps) {
@@ -90,6 +94,7 @@ const NoteItem = memo(function NoteItem({
       subtitle={preview}
       meta={formatDate(modified)}
       isSelected={isSelected}
+      isPinned={isPinned}
       onClick={handleClick}
       onContextMenu={handleContextMenu}
     />
@@ -103,6 +108,8 @@ export function NoteList() {
     selectNote,
     deleteNote,
     duplicateNote,
+    pinNote,
+    unpinNote,
     isLoading,
     searchQuery,
     searchResults,
@@ -110,7 +117,24 @@ export function NoteList() {
 
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [noteToDelete, setNoteToDelete] = useState<string | null>(null);
+  const [settings, setSettings] = useState<Settings | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Load settings when notes change
+  useEffect(() => {
+    notesService
+      .getSettings()
+      .then(setSettings)
+      .catch((error) => {
+        console.error("Failed to load settings:", error);
+      });
+  }, [notes]);
+
+  // Calculate pinned IDs set for efficient lookup
+  const pinnedIds = useMemo(
+    () => new Set(settings?.pinnedNoteIds || []),
+    [settings]
+  );
 
   const handleDeleteConfirm = useCallback(async () => {
     if (noteToDelete) {
@@ -127,14 +151,27 @@ export function NoteList() {
   const handleContextMenu = useCallback(
     async (e: React.MouseEvent, noteId: string) => {
       e.preventDefault();
+      const isPinned = pinnedIds.has(noteId);
 
       const menu = await Menu.new({
         items: [
           await MenuItem.new({
+            text: isPinned ? "Unpin" : "Pin",
+            action: async () => {
+              try {
+                await (isPinned ? unpinNote(noteId) : pinNote(noteId));
+                // Refresh settings after pin/unpin
+                const newSettings = await notesService.getSettings();
+                setSettings(newSettings);
+              } catch (error) {
+                console.error("Failed to pin/unpin note:", error);
+              }
+            },
+          }),
+          await MenuItem.new({
             text: "Duplicate",
             action: () => duplicateNote(noteId),
           }),
-          await PredefinedMenuItem.new({ item: "Separator" }),
           await MenuItem.new({
             text: "Delete",
             action: () => {
@@ -147,7 +184,7 @@ export function NoteList() {
 
       await menu.popup();
     },
-    [duplicateNote]
+    [pinnedIds, pinNote, unpinNote, duplicateNote]
   );
 
   // Memoize display items to prevent recalculation on every render
@@ -213,6 +250,7 @@ export function NoteList() {
             preview={item.preview}
             modified={item.modified}
             isSelected={selectedNoteId === item.id}
+            isPinned={pinnedIds.has(item.id)}
             onSelect={selectNote}
             onContextMenu={handleContextMenu}
           />

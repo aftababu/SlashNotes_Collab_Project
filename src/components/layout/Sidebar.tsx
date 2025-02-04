@@ -55,23 +55,6 @@ export function Sidebar({ onOpenSettings }: SidebarProps) {
     clearSearch();
   }, [clearSearch]);
 
-  // Cmd/Ctrl+F to toggle search
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "f") {
-        e.preventDefault();
-        if (searchOpen) {
-          closeSearch();
-        } else {
-          setSearchOpen(true);
-        }
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [searchOpen, closeSearch]);
-
   // Auto-focus search input when opened
   useEffect(() => {
     if (searchOpen) {
@@ -115,8 +98,8 @@ export function Sidebar({ onOpenSettings }: SidebarProps) {
             {notes.length}
           </div>
         </div>
-        <div className="flex items-center gap-0.5">
-          <IconButton onClick={toggleSearch} title="Search (⌘F)">
+        <div className="flex items-center gap-px">
+          <IconButton onClick={toggleSearch} title="Search">
             {searchOpen ? (
               <SearchOffIcon className="w-4.25 h-4.25 stroke-[1.5]" />
             ) : (

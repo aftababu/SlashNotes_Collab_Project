@@ -12,6 +12,9 @@ import Image from "@tiptap/extension-image";
 import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
 import { Markdown } from "@tiptap/markdown";
+import { Extension } from "@tiptap/core";
+import { Decoration, DecorationSet } from "@tiptap/pm/view";
+import { Plugin, PluginKey } from "@tiptap/pm/state";
 import tippy, { type Instance as TippyInstance } from "tippy.js";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -31,8 +34,11 @@ function isAllowedUrlScheme(url: string): boolean {
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { useNotes } from "../../context/NotesContext";
 import { LinkEditor } from "./LinkEditor";
+import { SearchToolbar } from "./SearchToolbar";
 import { cn } from "../../lib/utils";
 import { Button, IconButton, ToolbarButton, Tooltip } from "../ui";
+import * as notesService from "../../services/notes";
+import type { Settings } from "../../types/note";
 import {
   BoldIcon,
   ItalicIcon,
@@ -55,6 +61,8 @@ import {
   CopyIcon,
   PanelLeftIcon,
   RefreshCwIcon,
+  PinIcon,
+  SearchIcon,
 } from "../icons";
 
 function formatDateTime(timestamp: number): string {
@@ -68,6 +76,53 @@ function formatDateTime(timestamp: number): string {
     minute: "2-digit",
   });
 }
+
+// Search highlight extension - adds yellow backgrounds to search matches
+const searchHighlightPluginKey = new PluginKey("searchHighlight");
+
+interface SearchHighlightOptions {
+  matches: Array<{ from: number; to: number }>;
+  currentIndex: number;
+}
+
+const SearchHighlight = Extension.create<SearchHighlightOptions>({
+  name: "searchHighlight",
+
+  addOptions() {
+    return {
+      matches: [],
+      currentIndex: 0,
+    };
+  },
+
+  addProseMirrorPlugins() {
+    return [
+      new Plugin({
+        key: searchHighlightPluginKey,
+        state: {
+          init: () => DecorationSet.empty,
+          apply: (tr, oldSet) => {
+            // Map decorations through document changes
+            const set = oldSet.map(tr.mapping, tr.doc);
+
+            // Check if we need to update decorations (from transaction meta)
+            const meta = tr.getMeta(searchHighlightPluginKey);
+            if (meta !== undefined) {
+              return meta.decorationSet;
+            }
+
+            return set;
+          },
+        },
+        props: {
+          decorations: (state) => {
+            return searchHighlightPluginKey.getState(state);
+          },
+        },
+      }),
+    ];
+  },
+});
 
 interface FormatBarProps {
   editor: TiptapEditor | null;
@@ -210,17 +265,28 @@ interface EditorProps {
 
 export function Editor({ onToggleSidebar, sidebarVisible }: EditorProps) {
   const {
+    notes,
     currentNote,
     saveNote,
     createNote,
     hasExternalChanges,
     reloadCurrentNote,
     reloadVersion,
+    pinNote,
+    unpinNote,
   } = useNotes();
   const [isSaving, setIsSaving] = useState(false);
   // Force re-render when selection changes to update toolbar active states
   const [, setSelectionKey] = useState(0);
   const [copyMenuOpen, setCopyMenuOpen] = useState(false);
+  const [settings, setSettings] = useState<Settings | null>(null);
+  // Search state
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchMatches, setSearchMatches] = useState<
+    Array<{ from: number; to: number }>
+  >([]);
+  const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
   const saveTimeoutRef = useRef<number | null>(null);
   const linkPopupRef = useRef<TippyInstance | null>(null);
   const isLoadingRef = useRef(false);
@@ -243,6 +309,122 @@ export function Editor({ onToggleSidebar, sidebarVisible }: EditorProps) {
       }
       // Fallback to plain text
       return editorInstance.getText();
+    },
+    []
+  );
+
+  // Load settings when note changes or notes are refreshed (e.g., after pin/unpin)
+  useEffect(() => {
+    if (currentNote?.id) {
+      notesService
+        .getSettings()
+        .then(setSettings)
+        .catch((error) => {
+          console.error("Failed to load settings:", error);
+          toast.error(
+            `Failed to load settings: ${
+              error instanceof Error ? error.message : "Unknown error"
+            }`
+          );
+        });
+    }
+  }, [currentNote?.id, notes]);
+
+  // Calculate if current note is pinned
+  const isPinned =
+    settings?.pinnedNoteIds?.includes(currentNote?.id || "") || false;
+
+  // Find all matches for search query (case-insensitive)
+  const findMatches = useCallback(
+    (query: string, editorInstance: TiptapEditor | null) => {
+      if (!editorInstance || !query.trim()) return [];
+
+      const doc = editorInstance.state.doc;
+      const lowerQuery = query.toLowerCase();
+      const matches: Array<{ from: number; to: number }> = [];
+
+      // Search through each text node
+      doc.descendants((node, nodePos) => {
+        if (node.isText && node.text) {
+          const text = node.text;
+          const lowerText = text.toLowerCase();
+
+          let searchPos = 0;
+          while (searchPos < lowerText.length && matches.length < 500) {
+            const index = lowerText.indexOf(lowerQuery, searchPos);
+            if (index === -1) break;
+
+            const matchFrom = nodePos + index;
+            const matchTo = matchFrom + query.length;
+
+            // Make sure the match doesn't extend beyond valid document bounds
+            if (matchTo <= doc.content.size) {
+              matches.push({
+                from: matchFrom,
+                to: matchTo,
+              });
+            }
+
+            searchPos = index + 1;
+          }
+        }
+      });
+
+      return matches;
+    },
+    []
+  );
+
+  // Update search decorations - applies yellow backgrounds to all matches
+  const updateSearchDecorations = useCallback(
+    (
+      matches: Array<{ from: number; to: number }>,
+      currentIndex: number,
+      editorInstance: TiptapEditor | null
+    ) => {
+      if (!editorInstance) return;
+
+      try {
+        const { state } = editorInstance;
+        const decorations: Decoration[] = [];
+
+        // Add decorations for all matches
+        matches.forEach((match, index) => {
+          const isActive = index === currentIndex;
+          decorations.push(
+            Decoration.inline(match.from, match.to, {
+              class: isActive
+                ? "bg-yellow-300/50 dark:bg-yellow-400/40" // Brighter yellow for active match
+                : "bg-yellow-300/25 dark:bg-yellow-400/20", // Lighter yellow for inactive matches
+            })
+          );
+        });
+
+        const decorationSet = DecorationSet.create(state.doc, decorations);
+
+        // Update decorations via transaction
+        const tr = state.tr.setMeta(searchHighlightPluginKey, {
+          decorationSet,
+        });
+
+        editorInstance.view.dispatch(tr);
+
+        // Scroll to current match
+        if (matches[currentIndex]) {
+          const match = matches[currentIndex];
+          const { node } = editorInstance.view.domAtPos(match.from);
+          const element =
+            node.nodeType === Node.ELEMENT_NODE
+              ? (node as HTMLElement)
+              : node.parentElement;
+
+          if (element) {
+            element.scrollIntoView({ behavior: "smooth", block: "center" });
+          }
+        }
+      } catch (error) {
+        console.error("Failed to update search decorations:", error);
+      }
     },
     []
   );
@@ -326,6 +508,10 @@ export function Editor({ onToggleSidebar, sidebarVisible }: EditorProps) {
         nested: true,
       }),
       Markdown.configure({}),
+      SearchHighlight.configure({
+        matches: [],
+        currentIndex: 0,
+      }),
     ],
     editorProps: {
       attributes: {
@@ -447,6 +633,51 @@ export function Editor({ onToggleSidebar, sidebarVisible }: EditorProps) {
   const lastSaveRef = useRef<{ noteId: string; content: string } | null>(null);
   // Track reloadVersion to detect manual refreshes
   const lastReloadVersionRef = useRef(0);
+
+  // Search navigation functions (defined after editor is created)
+  const goToNextMatch = useCallback(() => {
+    if (searchMatches.length === 0 || !editor) return;
+    const nextIndex = (currentMatchIndex + 1) % searchMatches.length;
+    setCurrentMatchIndex(nextIndex);
+    updateSearchDecorations(searchMatches, nextIndex, editor);
+  }, [searchMatches, currentMatchIndex, editor, updateSearchDecorations]);
+
+  const goToPreviousMatch = useCallback(() => {
+    if (searchMatches.length === 0 || !editor) return;
+    const prevIndex =
+      (currentMatchIndex - 1 + searchMatches.length) % searchMatches.length;
+    setCurrentMatchIndex(prevIndex);
+    updateSearchDecorations(searchMatches, prevIndex, editor);
+  }, [searchMatches, currentMatchIndex, editor, updateSearchDecorations]);
+
+  // Handle search query change
+  const handleSearchChange = useCallback((query: string) => {
+    setSearchQuery(query);
+  }, []);
+
+  // Debounced search effect
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      setSearchMatches([]);
+      setCurrentMatchIndex(0);
+      // Clear decorations when search is empty
+      if (editor) {
+        updateSearchDecorations([], 0, editor);
+      }
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      if (!editor) return;
+      const matches = findMatches(searchQuery, editor);
+      setSearchMatches(matches);
+      setCurrentMatchIndex(0);
+      // Always update decorations (clears old highlights when no matches)
+      updateSearchDecorations(matches, 0, editor);
+    }, 150);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery, editor, findMatches, updateSearchDecorations]);
 
   // Prevent links from opening unless Cmd/Ctrl+Click
   useEffect(() => {
@@ -798,6 +1029,52 @@ export function Editor({ onToggleSidebar, sidebarVisible }: EditorProps) {
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, []);
 
+  // Cmd+F to open search (works when document/editor area is focused)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "f") {
+        if (!currentNote || !editor) return;
+
+        const target = e.target as HTMLElement;
+        const tagName = target.tagName.toLowerCase();
+
+        // Don't intercept if user is in an input/textarea (except the editor itself)
+        if (
+          (tagName === "input" || tagName === "textarea") &&
+          !target.closest(".ProseMirror")
+        ) {
+          return;
+        }
+
+        // Don't intercept if in sidebar
+        if (target.closest('[class*="sidebar"]')) {
+          return;
+        }
+
+        // Open search for the editor
+        e.preventDefault();
+        setSearchOpen(true);
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [editor, currentNote]);
+
+
+  // Clear search on note switch
+  useEffect(() => {
+    if (currentNote?.id) {
+      setSearchOpen(false);
+      setSearchQuery("");
+      setSearchMatches([]);
+      setCurrentMatchIndex(0);
+      // Clear decorations
+      if (editor) {
+        updateSearchDecorations([], 0, editor);
+      }
+    }
+  }, [currentNote?.id, editor, updateSearchDecorations]);
+
   // Copy handlers
   const handleCopyMarkdown = useCallback(async () => {
     if (!editor) return;
@@ -880,22 +1157,23 @@ export function Editor({ onToggleSidebar, sidebarVisible }: EditorProps) {
         )}
         data-tauri-drag-region
       >
-        <div className="titlebar-no-drag flex items-center gap-1">
+        <div className="titlebar-no-drag flex items-center gap-1 min-w-0">
           {onToggleSidebar && (
             <IconButton
               onClick={onToggleSidebar}
               title={
                 sidebarVisible ? "Hide sidebar (⌘\\)" : "Show sidebar (⌘\\)"
               }
+              className="shrink-0"
             >
               <PanelLeftIcon className="w-4.5 h-4.5 stroke-[1.5]" />
             </IconButton>
           )}
-          <span className="text-xs text-text-muted mb-px">
+          <span className="text-xs text-text-muted mb-px truncate">
             {formatDateTime(currentNote.modified)}
           </span>
         </div>
-        <div className="titlebar-no-drag flex items-center gap-0.5">
+        <div className="titlebar-no-drag flex items-center gap-px shrink-0">
           {hasExternalChanges ? (
             <Tooltip content="External changes detected (⌘R to refresh)">
               <button
@@ -919,11 +1197,53 @@ export function Editor({ onToggleSidebar, sidebarVisible }: EditorProps) {
               </div>
             </Tooltip>
           )}
+          {currentNote && (
+            <Tooltip content={isPinned ? "Unpin note" : "Pin note"}>
+              <IconButton
+                onClick={async () => {
+                  if (!currentNote) return;
+                  try {
+                    if (isPinned) {
+                      await unpinNote(currentNote.id);
+                      toast.success("Note unpinned");
+                    } else {
+                      await pinNote(currentNote.id);
+                      toast.success("Note pinned");
+                    }
+                    // Reload settings to update isPinned state
+                    const updatedSettings = await notesService.getSettings();
+                    setSettings(updatedSettings);
+                  } catch (error) {
+                    console.error("Failed to pin/unpin note:", error);
+                    toast.error(
+                      `Failed to ${isPinned ? "unpin" : "pin"} note: ${
+                        error instanceof Error ? error.message : "Unknown error"
+                      }`
+                    );
+                  }
+                }}
+              >
+                <PinIcon
+                  className={cn(
+                    "w-5 h-5 stroke-[1.3]",
+                    isPinned && "fill-current"
+                  )}
+                />
+              </IconButton>
+            </Tooltip>
+          )}
+          {currentNote && (
+            <Tooltip content="Find in note (⌘F)">
+              <IconButton onClick={() => setSearchOpen(true)}>
+                <SearchIcon className="w-4.25 h-4.25 stroke-[1.6]" />
+              </IconButton>
+            </Tooltip>
+          )}
           <DropdownMenu.Root open={copyMenuOpen} onOpenChange={setCopyMenuOpen}>
             <Tooltip content="Copy as... (⌘⇧C)">
               <DropdownMenu.Trigger asChild>
                 <IconButton>
-                  <CopyIcon className="w-4.25 h-4.25 stroke-[1.5]" />
+                  <CopyIcon className="w-4.25 h-4.25 stroke-[1.6]" />
                 </IconButton>
               </DropdownMenu.Trigger>
             </Tooltip>
@@ -977,8 +1297,33 @@ export function Editor({ onToggleSidebar, sidebarVisible }: EditorProps) {
       {/* TipTap Editor */}
       <div
         ref={scrollContainerRef}
-        className="flex-1 overflow-y-auto overflow-x-hidden"
+        className="flex-1 overflow-y-auto overflow-x-hidden relative"
       >
+        {searchOpen && (
+          <div className="sticky top-2 z-10 animate-in fade-in slide-in-from-top-4 duration-200 pointer-events-none pr-2 flex justify-end">
+            <div className="pointer-events-auto">
+              <SearchToolbar
+              query={searchQuery}
+              onChange={handleSearchChange}
+              onNext={goToNextMatch}
+              onPrevious={goToPreviousMatch}
+              onClose={() => {
+                setSearchOpen(false);
+                setSearchQuery("");
+                setSearchMatches([]);
+                setCurrentMatchIndex(0);
+                // Clear decorations and refocus editor
+                if (editor) {
+                  updateSearchDecorations([], 0, editor);
+                  editor.commands.focus();
+                }
+              }}
+              currentMatch={searchMatches.length === 0 ? 0 : currentMatchIndex + 1}
+              totalMatches={searchMatches.length}
+            />
+            </div>
+          </div>
+        )}
         <EditorContent editor={editor} className="h-full text-text" />
       </div>
     </div>
