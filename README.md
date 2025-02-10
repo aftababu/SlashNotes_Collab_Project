@@ -4,19 +4,19 @@
 
 A minimalist, offline-first markdown note-taking app for macOS and Windows.
 
-![macOS](https://img.shields.io/badge/platform-macOS-lightgrey)
-![Windows](https://img.shields.io/badge/platform-Windows-blue)
+[Website](https://www.ericli.io/scratch) · ![macOS](https://img.shields.io/badge/platform-macOS-lightgrey) ![Windows](https://img.shields.io/badge/platform-Windows-blue)
 
 ## Features
 
 - **Offline-first** - No cloud, no account, no internet required
 - **Markdown-based** - Notes stored as plain `.md` files you own
-- **WYSIWYG editing** - Rich text editing with tables that saves as markdown
-- **Works with AI agents** - Detects external file changes and refreshes on demand
-- **AI editing** - Invoke Claude Code CLI to edit notes with natural language prompts
-- **Full-text search** - Fast search with command palette
+- **WYSIWYG editing** - Rich text editing that saves as markdown
+- **Edit with Claude Code** - Use your local Claude Code CLI to edit notes
+- **Works with other AI agents** - Detects external file changes
+- **Keyboard optimized** - Lots of shortcuts and a command palette
+- **Customizable** - Theme and editor typography settings
 - **Git integration** - Optional version control for your notes
-- **Customizable** - Theme (light/dark/system) and editor typography settings
+- **Lightweight** - Less than 10% the size of Obsidian or Notion
 
 ## Screenshot
 
@@ -47,7 +47,7 @@ Pre-built Windows binaries are not yet available. To run on Windows, build from 
 
 **Prerequisites:** Node.js 18+, Rust 1.70+
 
-**macOS only:** Xcode Command Line Tools
+**macOS:** Xcode Command Line Tools · **Windows:** WebView2 Runtime (pre-installed on Windows 11)
 
 ```bash
 git clone https://github.com/erictli/scratch.git
