@@ -29,3 +29,6 @@ src-tauri/gen/
 
 # Build secrets
 .env.build
+
+# Release artifacts
+latest.json

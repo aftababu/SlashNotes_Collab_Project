@@ -41,9 +41,7 @@ brew install --cask erictli/tap/scratch
 
 ### Windows
 
-1. Download `Scratch_x64-setup.exe` from [Releases](https://github.com/erictli/scratch/releases)
-2. Run the installer
-3. The installer will automatically download WebView2 if needed
+Pre-built Windows binaries are not yet available. To run on Windows, build from source (see below).
 
 ### From Source
 

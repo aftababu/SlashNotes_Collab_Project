@@ -1542,10 +1542,53 @@ async fn git_push_with_upstream(state: State<'_, AppState>) -> Result<git::GitRe
 }
 
 // Check if Claude CLI is installed
+fn get_expanded_path() -> String {
+    let system_path = std::env::var("PATH").unwrap_or_default();
+    let home = std::env::var("HOME").unwrap_or_else(|_| String::new());
+
+    if home.is_empty() {
+        return system_path;
+    }
+
+    // Common locations for node-installed CLIs (nvm, volta, fnm, homebrew, global npm)
+    let candidate_dirs = vec![
+        format!("{home}/.nvm/versions/node"),
+        format!("{home}/.fnm/node-versions"),
+    ];
+    let static_dirs = vec![
+        format!("{home}/.volta/bin"),
+        format!("{home}/.local/bin"),
+        "/usr/local/bin".to_string(),
+        "/opt/homebrew/bin".to_string(),
+    ];
+
+    let mut expanded = Vec::new();
+
+    // For nvm/fnm, scan for node version dirs containing a bin/ folder
+    for base in &candidate_dirs {
+        if let Ok(entries) = std::fs::read_dir(base) {
+            for entry in entries.flatten() {
+                let bin_path = entry.path().join("bin");
+                if bin_path.exists() {
+                    expanded.push(bin_path.to_string_lossy().to_string());
+                }
+            }
+        }
+    }
+
+    for dir in static_dirs {
+        expanded.push(dir);
+    }
+
+    expanded.push(system_path);
+    expanded.join(":")
+}
+
 #[tauri::command]
 async fn ai_check_claude_cli() -> Result<bool, String> {
     use std::process::Command;
 
+    let path = get_expanded_path();
     let which_cmd = if cfg!(target_os = "windows") {
         "where"
     } else {
@@ -1554,6 +1597,7 @@ async fn ai_check_claude_cli() -> Result<bool, String> {
 
     let check_output = Command::new(which_cmd)
         .arg("claude")
+        .env("PATH", &path)
         .output()
         .map_err(|e| format!("Failed to check for claude CLI: {}", e))?;
 
@@ -1570,6 +1614,7 @@ async fn ai_execute_claude(
     use std::io::Write;
 
     // Check if claude CLI exists
+    let path = get_expanded_path();
     let which_cmd = if cfg!(target_os = "windows") {
         "where"
     } else {
@@ -1578,6 +1623,7 @@ async fn ai_execute_claude(
 
     let check_output = Command::new(which_cmd)
         .arg("claude")
+        .env("PATH", &path)
         .output()
         .map_err(|e| format!("Failed to check for claude CLI: {}", e))?;
 
@@ -1597,6 +1643,7 @@ async fn ai_execute_claude(
     let child_for_task = Arc::clone(&shared_child);
     let mut task = tauri::async_runtime::spawn_blocking(move || {
         let child = Command::new("claude")
+            .env("PATH", &path)
             .arg(&file_path)
             .arg("--permission-mode")
             .arg("bypassPermissions")
