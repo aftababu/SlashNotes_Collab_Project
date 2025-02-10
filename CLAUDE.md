@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Scratch is a native Mac markdown note-taking app built with Tauri v2 (Rust backend) + React/TypeScript/Tailwind (frontend) + TipTap (WYSIWYG editor) + Tantivy (full-text search).
+Scratch is a cross-platform markdown note-taking app for macOS and Windows, built with Tauri v2 (Rust backend) + React/TypeScript/Tailwind (frontend) + TipTap (WYSIWYG editor) + Tantivy (full-text search).
 
 ## Tech Stack
 
@@ -20,6 +20,91 @@ npm run build        # Build frontend (tsc + vite)
 npm run tauri dev    # Run full app in development mode
 npm run tauri build  # Build production app
 ```
+
+## Building for Release
+
+**Before building:** Bump version in `package.json` and `src-tauri/tauri.conf.json`
+
+### macOS Build (Universal Binary)
+
+Builds a universal binary supporting both Intel and Apple Silicon Macs.
+
+**Prerequisites:**
+```bash
+rustup target add x86_64-apple-darwin
+rustup target add aarch64-apple-darwin
+```
+
+**Build Steps:**
+
+1. Set up environment (credentials in `.env.build`):
+   ```bash
+   source .env.build
+   PATH="/usr/bin:$PATH"  # Ensure system xattr is used, not Python's
+   ```
+
+2. Clean previous build and build universal binary:
+   ```bash
+   rm -rf src-tauri/target/release/bundle
+   npm run tauri build -- --target universal-apple-darwin
+   ```
+
+3. Submit for notarization:
+   ```bash
+   xcrun notarytool submit src-tauri/target/release/bundle/macos/Scratch.zip \
+     --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait
+   ```
+
+4. Staple the notarization ticket:
+   ```bash
+   xcrun stapler staple src-tauri/target/release/bundle/macos/Scratch.app
+   ```
+
+5. Create DMG with Applications symlink:
+   ```bash
+   mkdir -p /tmp/scratch-dmg
+   cp -R src-tauri/target/release/bundle/macos/Scratch.app /tmp/scratch-dmg/
+   ln -sf /Applications /tmp/scratch-dmg/Applications
+   hdiutil create -volname "Scratch" -srcfolder /tmp/scratch-dmg -ov -format UDZO \
+     src-tauri/target/release/bundle/dmg/Scratch_VERSION_universal.dmg
+   rm -rf /tmp/scratch-dmg
+   ```
+
+6. Get checksum and upload: `shasum -a 256 <dmg_path>`
+
+### Windows Build
+
+Builds `.msi` installer and `.exe` setup for Windows.
+
+**Prerequisites:**
+- Windows machine or VM
+- Rust toolchain installed (`rustup`)
+- WebView2 Runtime (usually pre-installed on Windows 11)
+
+**Build Steps:**
+
+1. Clean previous build:
+   ```powershell
+   Remove-Item -Recurse -Force src-tauri\target\release\bundle
+   ```
+
+2. Build installers:
+   ```powershell
+   npm run tauri build
+   ```
+
+3. Outputs will be in `src-tauri/target/release/bundle/`:
+   - `msi/Scratch_VERSION_x64_en-US.msi` - MSI installer
+   - `nsis/Scratch_VERSION_x64-setup.exe` - NSIS setup (recommended for distribution)
+
+4. Get checksum and upload:
+   ```powershell
+   Get-FileHash .\src-tauri\target\release\bundle\nsis\Scratch_VERSION_x64-setup.exe -Algorithm SHA256
+   ```
+
+**Notes:**
+- The NSIS setup (`.exe`) automatically downloads WebView2 if needed
+- For x86 support, add `--target i686-pc-windows-msvc` (requires `rustup target add i686-pc-windows-msvc`)
 
 ## Project Structure
 

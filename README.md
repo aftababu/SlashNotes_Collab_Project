@@ -2,9 +2,10 @@
 
 <img src="docs/app-icon.png" alt="Scratch" width="128" height="128" style="border-radius: 22px; margin-bottom: 8px;">
 
-A minimalist, offline-first markdown note-taking app for Mac.
+A minimalist, offline-first markdown note-taking app for macOS and Windows.
 
 ![macOS](https://img.shields.io/badge/platform-macOS-lightgrey)
+![Windows](https://img.shields.io/badge/platform-Windows-blue)
 
 ## Features
 
@@ -22,22 +23,32 @@ A minimalist, offline-first markdown note-taking app for Mac.
 
 ## Installation
 
-### Homebrew (Recommended)
+### macOS
+
+**Homebrew (Recommended)**
 
 ```bash
 brew tap erictli/tap
 brew install --cask erictli/tap/scratch
 ```
 
-### Manual Download
+**Manual Download**
 
-1. Download the latest DMG from [Releases](https://github.com/erictli/scratch/releases)
+1. Download the latest `.dmg` from [Releases](https://github.com/erictli/scratch/releases)
 2. Open the DMG and drag Scratch to Applications
 3. Open Scratch from Applications
 
+### Windows
+
+1. Download `Scratch_x64-setup.exe` from [Releases](https://github.com/erictli/scratch/releases)
+2. Run the installer
+3. The installer will automatically download WebView2 if needed
+
 ### From Source
 
-Prerequisites: Node.js 18+, Rust 1.70+, Xcode Command Line Tools
+**Prerequisites:** Node.js 18+, Rust 1.70+
+
+**macOS only:** Xcode Command Line Tools
 
 ```bash
 git clone https://github.com/erictli/scratch.git
@@ -62,7 +73,9 @@ Scratch is designed to be usable without a mouse. Here are the essentials to get
 | `Cmd+B/I` | Bold/Italic         |
 | `↑/↓`     | Navigate notes      |
 
-Many more shortcuts and features are available in the app—explore via the command palette (`Cmd+P`).
+**Note:** On Windows, use `Ctrl` instead of `Cmd` for all shortcuts.
+
+Many more shortcuts and features are available in the app—explore via the command palette (`Cmd+P` / `Ctrl+P`).
 
 ## Built With
 
