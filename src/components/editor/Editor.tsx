@@ -34,6 +34,7 @@ function isAllowedUrlScheme(url: string): boolean {
   }
 }
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import { Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
 import { useNotes } from "../../context/NotesContext";
 import { LinkEditor } from "./LinkEditor";
 import { SearchToolbar } from "./SearchToolbar";
@@ -58,6 +59,7 @@ import {
   SeparatorIcon,
   LinkIcon,
   ImageIcon,
+  TableIcon,
   SpinnerIcon,
   CircleCheckIcon,
   CopyIcon,
@@ -126,6 +128,44 @@ const SearchHighlight = Extension.create<SearchHighlightOptions>({
   },
 });
 
+// GridPicker component for table insertion
+interface GridPickerProps {
+  onSelect: (rows: number, cols: number) => void;
+}
+
+function GridPicker({ onSelect }: GridPickerProps) {
+  const [hovered, setHovered] = useState({ row: 3, col: 3 });
+
+  return (
+    <>
+      <div className="grid grid-cols-5 gap-1">
+        {Array.from({ length: 25 }).map((_, i) => {
+          const row = Math.floor(i / 5) + 1;
+          const col = (i % 5) + 1;
+          const isHighlighted = row <= hovered.row && col <= hovered.col;
+
+          return (
+            <div
+              key={i}
+              className={cn(
+                "w-5.5 h-5.5 border rounded cursor-pointer transition-colors",
+                isHighlighted
+                  ? "bg-accent/20 border-accent/50"
+                  : "border-border hover:border-accent/50",
+              )}
+              onMouseEnter={() => setHovered({ row, col })}
+              onClick={() => onSelect(row, col)}
+            />
+          );
+        })}
+      </div>
+      <p className="text-xs text-center mt-2 text-text-muted">
+        {hovered.row} × {hovered.col} table
+      </p>
+    </>
+  );
+}
+
 interface FormatBarProps {
   editor: TiptapEditor | null;
   onAddLink: () => void;
@@ -135,6 +175,8 @@ interface FormatBarProps {
 // FormatBar must re-render with parent to reflect editor.isActive() state changes
 // (editor instance is mutable, so memo would cause stale active states)
 function FormatBar({ editor, onAddLink, onAddImage }: FormatBarProps) {
+  const [tableMenuOpen, setTableMenuOpen] = useState(false);
+
   if (!editor) return null;
 
   return (
@@ -256,6 +298,36 @@ function FormatBar({ editor, onAddLink, onAddImage }: FormatBarProps) {
       <ToolbarButton onClick={onAddImage} isActive={false} title="Add Image">
         <ImageIcon className="w-4.5 h-4.5 stroke-[1.5]" />
       </ToolbarButton>
+      <DropdownMenu.Root open={tableMenuOpen} onOpenChange={setTableMenuOpen}>
+        <Tooltip content="Insert Table">
+          <DropdownMenu.Trigger asChild>
+            <ToolbarButton isActive={editor.isActive("table")}>
+              <TableIcon className="w-4.5 h-4.5 stroke-[1.5]" />
+            </ToolbarButton>
+          </DropdownMenu.Trigger>
+        </Tooltip>
+        <DropdownMenu.Portal>
+          <DropdownMenu.Content
+            className="p-2.5 bg-bg border border-border rounded-md shadow-lg z-50"
+            onCloseAutoFocus={(e) => e.preventDefault()}
+          >
+            <GridPicker
+              onSelect={(rows, cols) => {
+                editor
+                  .chain()
+                  .focus()
+                  .insertTable({
+                    rows,
+                    cols,
+                    withHeaderRow: true,
+                  })
+                  .run();
+                setTableMenuOpen(false);
+              }}
+            />
+          </DropdownMenu.Content>
+        </DropdownMenu.Portal>
+      </DropdownMenu.Root>
     </div>
   );
 }
@@ -307,12 +379,16 @@ export function Editor({ onToggleSidebar, sidebarVisible }: EditorProps) {
       if (!editorInstance) return "";
       const manager = editorInstance.storage.markdown?.manager;
       if (manager) {
-        return manager.serialize(editorInstance.getJSON());
+        let markdown = manager.serialize(editorInstance.getJSON());
+        // Clean up nbsp entities in table cells (TipTap adds these to empty cells)
+        // Match table rows and remove one or more &nbsp; or &#160; from cells
+        markdown = markdown.replace(/(\|)\s*(?:&nbsp;|&#160;)+\s*(?=\|)/g, "$1 ");
+        return markdown;
       }
       // Fallback to plain text
       return editorInstance.getText();
     },
-    []
+    [],
   );
 
   // Load settings when note changes or notes are refreshed (e.g., after pin/unpin)
@@ -326,7 +402,7 @@ export function Editor({ onToggleSidebar, sidebarVisible }: EditorProps) {
           toast.error(
             `Failed to load settings: ${
               error instanceof Error ? error.message : "Unknown error"
-            }`
+            }`,
           );
         });
     }
@@ -374,7 +450,7 @@ export function Editor({ onToggleSidebar, sidebarVisible }: EditorProps) {
 
       return matches;
     },
-    []
+    [],
   );
 
   // Update search decorations - applies yellow backgrounds to all matches
@@ -382,7 +458,7 @@ export function Editor({ onToggleSidebar, sidebarVisible }: EditorProps) {
     (
       matches: Array<{ from: number; to: number }>,
       currentIndex: number,
-      editorInstance: TiptapEditor | null
+      editorInstance: TiptapEditor | null,
     ) => {
       if (!editorInstance) return;
 
@@ -398,7 +474,7 @@ export function Editor({ onToggleSidebar, sidebarVisible }: EditorProps) {
               class: isActive
                 ? "bg-yellow-300/50 dark:bg-yellow-400/40" // Brighter yellow for active match
                 : "bg-yellow-300/25 dark:bg-yellow-400/20", // Lighter yellow for inactive matches
-            })
+            }),
           );
         });
 
@@ -428,7 +504,7 @@ export function Editor({ onToggleSidebar, sidebarVisible }: EditorProps) {
         console.error("Failed to update search decorations:", error);
       }
     },
-    []
+    [],
   );
 
   // Immediate save function (used for flushing)
@@ -442,7 +518,7 @@ export function Editor({ onToggleSidebar, sidebarVisible }: EditorProps) {
         setIsSaving(false);
       }
     },
-    [saveNote]
+    [saveNote],
   );
 
   // Flush any pending save immediately (saves to the note currently loaded in editor)
@@ -502,7 +578,7 @@ export function Editor({ onToggleSidebar, sidebarVisible }: EditorProps) {
         },
       }),
       Image.configure({
-        inline: true,
+        inline: false,
         allowBase64: false,
       }),
       TaskList,
@@ -558,7 +634,7 @@ export function Editor({ onToggleSidebar, sidebarVisible }: EditorProps) {
                 // Save clipboard image
                 const relativePath = await invoke<string>(
                   "save_clipboard_image",
-                  { base64Data: base64 }
+                  { base64Data: base64 },
                 );
 
                 // Get notes folder and construct absolute path using Tauri's join
@@ -703,7 +779,7 @@ export function Editor({ onToggleSidebar, sidebarVisible }: EditorProps) {
         if ((e.metaKey || e.ctrlKey) && link.href) {
           if (isAllowedUrlScheme(link.href)) {
             openUrl(link.href).catch((error) =>
-              console.error("Failed to open link:", error)
+              console.error("Failed to open link:", error),
             );
           } else {
             toast.error("Cannot open links with this URL scheme");
@@ -1070,7 +1146,6 @@ export function Editor({ onToggleSidebar, sidebarVisible }: EditorProps) {
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [editor, currentNote]);
 
-
   // Clear search on note switch
   useEffect(() => {
     if (currentNote?.id) {
@@ -1149,7 +1224,11 @@ export function Editor({ onToggleSidebar, sidebarVisible }: EditorProps) {
               size="md"
               className="mt-4"
             >
-              New Note <span className="text-text-muted ml-1">{mod}{isMac ? "" : "+"}N</span>
+              New Note{" "}
+              <span className="text-text-muted ml-1">
+                {mod}
+                {isMac ? "" : "+"}N
+              </span>
             </Button>
           </div>
         </div>
@@ -1163,7 +1242,7 @@ export function Editor({ onToggleSidebar, sidebarVisible }: EditorProps) {
       <div
         className={cn(
           "h-11 shrink-0 flex items-center justify-between px-3",
-          !sidebarVisible && "pl-22"
+          !sidebarVisible && "pl-22",
         )}
         data-tauri-drag-region
       >
@@ -1172,7 +1251,9 @@ export function Editor({ onToggleSidebar, sidebarVisible }: EditorProps) {
             <IconButton
               onClick={onToggleSidebar}
               title={
-                sidebarVisible ? `Hide sidebar (${mod}${isMac ? "" : "+"}\\)` : `Show sidebar (${mod}${isMac ? "" : "+"}\\)`
+                sidebarVisible
+                  ? `Hide sidebar (${mod}${isMac ? "" : "+"}\\)`
+                  : `Show sidebar (${mod}${isMac ? "" : "+"}\\)`
               }
               className="shrink-0"
             >
@@ -1185,7 +1266,9 @@ export function Editor({ onToggleSidebar, sidebarVisible }: EditorProps) {
         </div>
         <div className="titlebar-no-drag flex items-center gap-px shrink-0">
           {hasExternalChanges ? (
-            <Tooltip content={`External changes detected (${mod}${isMac ? "" : "+"}R to refresh)`}>
+            <Tooltip
+              content={`External changes detected (${mod}${isMac ? "" : "+"}R to refresh)`}
+            >
               <button
                 onClick={reloadCurrentNote}
                 className="h-7 px-2 flex items-center gap-1 text-xs text-orange-500 hover:bg-orange-500/10 rounded transition-colors font-medium"
@@ -1228,7 +1311,7 @@ export function Editor({ onToggleSidebar, sidebarVisible }: EditorProps) {
                     toast.error(
                       `Failed to ${isPinned ? "unpin" : "pin"} note: ${
                         error instanceof Error ? error.message : "Unknown error"
-                      }`
+                      }`,
                     );
                   }
                 }}
@@ -1236,7 +1319,7 @@ export function Editor({ onToggleSidebar, sidebarVisible }: EditorProps) {
                 <PinIcon
                   className={cn(
                     "w-5 h-5 stroke-[1.3]",
-                    isPinned && "fill-current"
+                    isPinned && "fill-current",
                   )}
                 />
               </IconButton>
@@ -1250,7 +1333,9 @@ export function Editor({ onToggleSidebar, sidebarVisible }: EditorProps) {
             </Tooltip>
           )}
           <DropdownMenu.Root open={copyMenuOpen} onOpenChange={setCopyMenuOpen}>
-            <Tooltip content={`Copy as... (${mod}${isMac ? "" : "+"}${shift}${isMac ? "" : "+"}C)`}>
+            <Tooltip
+              content={`Copy as... (${mod}${isMac ? "" : "+"}${shift}${isMac ? "" : "+"}C)`}
+            >
               <DropdownMenu.Trigger asChild>
                 <IconButton>
                   <CopyIcon className="w-4.25 h-4.25 stroke-[1.6]" />
@@ -1313,28 +1398,181 @@ export function Editor({ onToggleSidebar, sidebarVisible }: EditorProps) {
           <div className="sticky top-2 z-10 animate-in fade-in slide-in-from-top-4 duration-200 pointer-events-none pr-2 flex justify-end">
             <div className="pointer-events-auto">
               <SearchToolbar
-              query={searchQuery}
-              onChange={handleSearchChange}
-              onNext={goToNextMatch}
-              onPrevious={goToPreviousMatch}
-              onClose={() => {
-                setSearchOpen(false);
-                setSearchQuery("");
-                setSearchMatches([]);
-                setCurrentMatchIndex(0);
-                // Clear decorations and refocus editor
-                if (editor) {
-                  updateSearchDecorations([], 0, editor);
-                  editor.commands.focus();
+                query={searchQuery}
+                onChange={handleSearchChange}
+                onNext={goToNextMatch}
+                onPrevious={goToPreviousMatch}
+                onClose={() => {
+                  setSearchOpen(false);
+                  setSearchQuery("");
+                  setSearchMatches([]);
+                  setCurrentMatchIndex(0);
+                  // Clear decorations and refocus editor
+                  if (editor) {
+                    updateSearchDecorations([], 0, editor);
+                    editor.commands.focus();
+                  }
+                }}
+                currentMatch={
+                  searchMatches.length === 0 ? 0 : currentMatchIndex + 1
                 }
-              }}
-              currentMatch={searchMatches.length === 0 ? 0 : currentMatchIndex + 1}
-              totalMatches={searchMatches.length}
-            />
+                totalMatches={searchMatches.length}
+              />
             </div>
           </div>
         )}
-        <EditorContent editor={editor} className="h-full text-text" />
+        <div
+          className="h-full"
+          onContextMenu={async (e) => {
+            if (!editor?.isActive("table")) return;
+
+            e.preventDefault();
+
+            try {
+              // Get the position at the click coordinates
+              const clickPos = editor.view.posAtCoords({
+                left: e.clientX,
+                top: e.clientY,
+              });
+
+              if (!clickPos) return;
+
+              // Set the selection to the clicked position
+              editor.chain().focus().setTextSelection(clickPos.pos).run();
+
+              // Now work with the updated selection
+              const { state } = editor;
+              const { selection } = state;
+              const { $anchor } = selection;
+
+              // Find the table cell/header node
+              let cellDepth = $anchor.depth;
+              while (
+                cellDepth > 0 &&
+                state.doc.resolve($anchor.pos).node(cellDepth).type.name !==
+                  "tableCell" &&
+                state.doc.resolve($anchor.pos).node(cellDepth).type.name !==
+                  "tableHeader"
+              ) {
+                cellDepth--;
+              }
+
+              // Guard: if we didn't find a table cell, bail out
+              if (cellDepth <= 0) return;
+
+              const resolvedNode = state.doc.resolve($anchor.pos).node(cellDepth);
+              if (
+                resolvedNode.type.name !== "tableCell" &&
+                resolvedNode.type.name !== "tableHeader"
+              ) {
+                return;
+              }
+
+              // Get the cell position
+              const cellPos = $anchor.before(cellDepth);
+
+              // Check if we're in the first column (index 0 in parent row)
+              const rowNode = state.doc.resolve(cellPos).node(cellDepth - 1);
+              let cellIndex = 0;
+              rowNode.forEach((_node, offset) => {
+                if (offset < cellPos - $anchor.before(cellDepth - 1) - 1) {
+                  cellIndex++;
+                }
+              });
+              const isFirstColumn = cellIndex === 0;
+
+              // Check if we're in the first row (index 0 in parent table)
+              const tableNode = state.doc.resolve(cellPos).node(cellDepth - 2);
+              let rowIndex = 0;
+              tableNode.forEach((_node, offset) => {
+                if (
+                  offset <
+                  $anchor.before(cellDepth - 1) -
+                    $anchor.before(cellDepth - 2) -
+                    1
+                ) {
+                  rowIndex++;
+                }
+              });
+              const isFirstRow = rowIndex === 0;
+
+              const menuItems = [];
+
+              // Only show "Add Column Before" if not in first column
+              if (!isFirstColumn) {
+                menuItems.push(
+                  await MenuItem.new({
+                    text: "Add Column Before",
+                    action: () => editor.chain().focus().addColumnBefore().run(),
+                  }),
+                );
+              }
+              menuItems.push(
+                await MenuItem.new({
+                  text: "Add Column After",
+                  action: () => editor.chain().focus().addColumnAfter().run(),
+                }),
+              );
+              menuItems.push(
+                await MenuItem.new({
+                  text: "Delete Column",
+                  action: () => editor.chain().focus().deleteColumn().run(),
+                }),
+              );
+              menuItems.push(await PredefinedMenuItem.new({ item: "Separator" }));
+
+              // Only show "Add Row Above" if not in first row
+              if (!isFirstRow) {
+                menuItems.push(
+                  await MenuItem.new({
+                    text: "Add Row Above",
+                    action: () => editor.chain().focus().addRowBefore().run(),
+                  }),
+                );
+              }
+              menuItems.push(
+                await MenuItem.new({
+                  text: "Add Row Below",
+                  action: () => editor.chain().focus().addRowAfter().run(),
+                }),
+              );
+              menuItems.push(
+                await MenuItem.new({
+                  text: "Delete Row",
+                  action: () => editor.chain().focus().deleteRow().run(),
+                }),
+              );
+              menuItems.push(await PredefinedMenuItem.new({ item: "Separator" }));
+              menuItems.push(
+                await MenuItem.new({
+                  text: "Toggle Header Row",
+                  action: () => editor.chain().focus().toggleHeaderRow().run(),
+                }),
+              );
+              menuItems.push(
+                await MenuItem.new({
+                  text: "Toggle Header Column",
+                  action: () => editor.chain().focus().toggleHeaderColumn().run(),
+                }),
+              );
+              menuItems.push(await PredefinedMenuItem.new({ item: "Separator" }));
+              menuItems.push(
+                await MenuItem.new({
+                  text: "Delete Table",
+                  action: () => editor.chain().focus().deleteTable().run(),
+                }),
+              );
+
+              const menu = await Menu.new({ items: menuItems });
+
+              await menu.popup();
+            } catch (err) {
+              console.error("Table context menu error:", err);
+            }
+          }}
+        >
+          <EditorContent editor={editor} className="h-full text-text" />
+        </div>
       </div>
     </div>
   );
