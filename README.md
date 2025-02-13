@@ -4,7 +4,9 @@
 
 A minimalist, offline-first markdown note-taking app for macOS and Windows.
 
-[Website](https://www.ericli.io/scratch) · ![macOS](https://img.shields.io/badge/platform-macOS-lightgrey) ![Windows](https://img.shields.io/badge/platform-Windows-blue)
+![macOS](https://img.shields.io/badge/platform-macOS-lightgrey) ![Windows](https://img.shields.io/badge/platform-Windows-blue)
+
+[Website](https://www.ericli.io/scratch) · [Releases](https://github.com/erictli/scratch/releases)
 
 ## Features
 
@@ -61,18 +63,18 @@ npm run tauri build    # Production build
 
 Scratch is designed to be usable without a mouse. Here are the essentials to get started:
 
-| Shortcut       | Action              |
-| -------------- | ------------------- |
-| `Cmd+N`        | New note            |
-| `Cmd+P`        | Command palette     |
-| `Cmd+K`        | Add/edit link       |
-| `Cmd+F`        | Find in note        |
-| `Cmd+Shift+C`  | Copy as...          |
-| `Cmd+R`        | Reload current note |
-| `Cmd+,`        | Open settings       |
-| `Cmd+\`        | Toggle sidebar      |
-| `Cmd+B/I`      | Bold/Italic         |
-| `↑/↓`          | Navigate notes      |
+| Shortcut      | Action              |
+| ------------- | ------------------- |
+| `Cmd+N`       | New note            |
+| `Cmd+P`       | Command palette     |
+| `Cmd+K`       | Add/edit link       |
+| `Cmd+F`       | Find in note        |
+| `Cmd+Shift+C` | Copy as...          |
+| `Cmd+R`       | Reload current note |
+| `Cmd+,`       | Open settings       |
+| `Cmd+\`       | Toggle sidebar      |
+| `Cmd+B/I`     | Bold/Italic         |
+| `↑/↓`         | Navigate notes      |
 
 **Note:** On Windows, use `Ctrl` instead of `Cmd` for all shortcuts.
 
