@@ -255,6 +255,7 @@ impl SearchIndex {
         if notes_folder.exists() {
             use walkdir::WalkDir;
             for entry in WalkDir::new(notes_folder)
+                .max_depth(10)
                 .into_iter()
                 .filter_entry(is_visible_notes_entry)
                 .flatten()
@@ -704,6 +705,7 @@ async fn list_notes(state: State<'_, AppState>) -> Result<Vec<NoteMetadata>, Str
         use walkdir::WalkDir;
         let mut results: Vec<(String, String, String, i64)> = Vec::new();
         for entry in WalkDir::new(&path_clone)
+            .max_depth(10)
             .into_iter()
             .filter_entry(is_visible_notes_entry)
             .flatten()
