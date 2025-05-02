@@ -1,7 +1,21 @@
 import { useTheme } from "../../context/ThemeContext";
 import { Button, Input, Select } from "../ui";
-import type { FontFamily } from "../../types/note";
+import type { FontFamily, TextDirection, EditorWidth } from "../../types/note";
 import { EyeIcon } from "../icons";
+
+// Text direction options
+const textDirectionOptions: { value: TextDirection; label: string }[] = [
+  { value: "ltr", label: "LTR" },
+  { value: "rtl", label: "RTL" },
+];
+
+// Page width options
+const editorWidthOptions: { value: EditorWidth; label: string }[] = [
+  { value: "narrow", label: "Narrow" },
+  { value: "normal", label: "Normal" },
+  { value: "wide", label: "Wide" },
+  { value: "full", label: "Full" },
+];
 
 // Font family options
 const fontFamilyOptions: { value: FontFamily; label: string }[] = [
@@ -26,6 +40,10 @@ export function AppearanceSettingsSection() {
     editorFontSettings,
     setEditorFontSetting,
     resetEditorFontSettings,
+    textDirection,
+    setTextDirection,
+    editorWidth,
+    setEditorWidth,
   } = useTheme();
 
   // Validated numeric change handler
@@ -46,7 +64,9 @@ export function AppearanceSettingsSection() {
     editorFontSettings.baseFontFamily !== "system-sans" ||
     editorFontSettings.baseFontSize !== 15 ||
     editorFontSettings.boldWeight !== 600 ||
-    editorFontSettings.lineHeight !== 1.6;
+    editorFontSettings.lineHeight !== 1.6 ||
+    textDirection !== "ltr" ||
+    editorWidth !== "normal";
 
   // Filter weight options based on font family
   const isMonospace = editorFontSettings.baseFontFamily === "monospace";
@@ -173,6 +193,42 @@ export function AppearanceSettingsSection() {
               />
             </div>
           </div>
+
+          {/* Text Direction */}
+          <div className="flex items-center justify-between">
+            <label className="text-sm text-text font-medium">Text Direction</label>
+            <Select
+              value={textDirection}
+              onChange={(e) =>
+                setTextDirection(e.target.value as TextDirection)
+              }
+              className="w-40"
+            >
+              {textDirectionOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </Select>
+          </div>
+
+          {/* Page Width */}
+          <div className="flex items-center justify-between">
+            <label className="text-sm text-text font-medium">Page Width</label>
+            <Select
+              value={editorWidth}
+              onChange={(e) =>
+                setEditorWidth(e.target.value as EditorWidth)
+              }
+              className="w-40"
+            >
+              {editorWidthOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </Select>
+          </div>
         </div>
 
         {/* Preview */}
@@ -184,6 +240,7 @@ export function AppearanceSettingsSection() {
           <div className="border border-border rounded-[10px] bg-bg p-6 pt-20 max-h-160 overflow-hidden rounded-t-lg">
             <div
               className="prose prose-lg dark:prose-invert max-w-xl mx-auto"
+              dir={textDirection}
               style={{
                 fontFamily:
                   editorFontSettings.baseFontFamily === "system-sans"

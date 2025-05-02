@@ -37,8 +37,10 @@ import {
   TrashIcon,
   PinIcon,
   ClaudeIcon,
+  ZenIcon,
+  MarkdownIcon,
 } from "../icons";
-import { mod } from "../../lib/platform";
+import { mod, shift } from "../../lib/platform";
 
 interface Command {
   id: string;
@@ -53,6 +55,8 @@ interface CommandPaletteProps {
   onClose: () => void;
   onOpenSettings?: () => void;
   onOpenAiModal?: () => void;
+  focusMode?: boolean;
+  onToggleFocusMode?: () => void;
 }
 
 export function CommandPalette({
@@ -60,6 +64,8 @@ export function CommandPalette({
   onClose,
   onOpenSettings,
   onOpenAiModal,
+  focusMode,
+  onToggleFocusMode,
 }: CommandPaletteProps) {
   const {
     notes,
@@ -250,6 +256,30 @@ export function CommandPalette({
       }
     }
 
+    // Focus mode and source toggle
+    baseCommands.push(
+      {
+        id: "focus-mode",
+        label: focusMode ? "Exit Focus Mode" : "Enter Focus Mode",
+        shortcut: `${mod} ${shift} Enter`,
+        icon: <ZenIcon className="w-4.5 h-4.5 stroke-[1.5]" />,
+        action: () => {
+          onToggleFocusMode?.();
+          onClose();
+        },
+      },
+      {
+        id: "toggle-source",
+        label: "Toggle Markdown Source",
+        shortcut: `${mod} ${shift} M`,
+        icon: <MarkdownIcon className="w-4.5 h-4.5 stroke-[1.5]" />,
+        action: () => {
+          window.dispatchEvent(new CustomEvent("toggle-source-mode"));
+          onClose();
+        },
+      },
+    );
+
     // Settings and theme commands at the bottom
     baseCommands.push(
       {
@@ -310,6 +340,8 @@ export function CommandPalette({
     settings,
     pinNote,
     unpinNote,
+    focusMode,
+    onToggleFocusMode,
   ]);
 
   // Debounced search using Tantivy (local state, doesn't affect sidebar)

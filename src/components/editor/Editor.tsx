@@ -36,9 +36,11 @@ function isAllowedUrlScheme(url: string): boolean {
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
 import { useNotes } from "../../context/NotesContext";
+import { useTheme } from "../../context/ThemeContext";
 import { Frontmatter } from "./Frontmatter";
 import { LinkEditor } from "./LinkEditor";
 import { SearchToolbar } from "./SearchToolbar";
+import { SlashCommand } from "./SlashCommand";
 import { cn } from "../../lib/utils";
 import { Button, IconButton, ToolbarButton, Tooltip } from "../ui";
 import * as notesService from "../../services/notes";
@@ -68,6 +70,8 @@ import {
   RefreshCwIcon,
   PinIcon,
   SearchIcon,
+  MarkdownIcon,
+  MarkdownOffIcon,
 } from "../icons";
 
 function formatDateTime(timestamp: number): string {
@@ -336,9 +340,14 @@ function FormatBar({ editor, onAddLink, onAddImage }: FormatBarProps) {
 interface EditorProps {
   onToggleSidebar?: () => void;
   sidebarVisible?: boolean;
+  focusMode?: boolean;
 }
 
-export function Editor({ onToggleSidebar, sidebarVisible }: EditorProps) {
+export function Editor({
+  onToggleSidebar,
+  sidebarVisible,
+  focusMode,
+}: EditorProps) {
   const {
     notes,
     currentNote,
@@ -350,11 +359,16 @@ export function Editor({ onToggleSidebar, sidebarVisible }: EditorProps) {
     pinNote,
     unpinNote,
   } = useNotes();
+  const { textDirection } = useTheme();
   const [isSaving, setIsSaving] = useState(false);
   // Force re-render when selection changes to update toolbar active states
   const [, setSelectionKey] = useState(0);
   const [copyMenuOpen, setCopyMenuOpen] = useState(false);
   const [settings, setSettings] = useState<Settings | null>(null);
+  // Source mode state
+  const [sourceMode, setSourceMode] = useState(false);
+  const [sourceContent, setSourceContent] = useState("");
+  const sourceTimeoutRef = useRef<number | null>(null);
   // Search state
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -381,9 +395,8 @@ export function Editor({ onToggleSidebar, sidebarVisible }: EditorProps) {
       const manager = editorInstance.storage.markdown?.manager;
       if (manager) {
         let markdown = manager.serialize(editorInstance.getJSON());
-        // Clean up nbsp entities in table cells (TipTap adds these to empty cells)
-        // Match table rows and remove one or more &nbsp; or &#160; from cells
-        markdown = markdown.replace(/(\|)\s*(?:&nbsp;|&#160;)+\s*(?=\|)/g, "$1 ");
+        // Clean up nbsp entities that TipTap inserts (especially in table cells)
+        markdown = markdown.replace(/&nbsp;|&#160;/g, " ");
         return markdown;
       }
       // Fallback to plain text
@@ -600,6 +613,7 @@ export function Editor({ onToggleSidebar, sidebarVisible }: EditorProps) {
         matches: [],
         currentIndex: 0,
       }),
+      SlashCommand,
     ],
     editorProps: {
       attributes: {
@@ -830,6 +844,14 @@ export function Editor({ onToggleSidebar, sidebarVisible }: EditorProps) {
     // Flush any pending save before switching to a different note
     if (!isSameNote && needsSaveRef.current) {
       flushPendingSave();
+    }
+    // Reset source mode when genuinely switching notes (renames return early above)
+    if (!isSameNote) {
+      setSourceMode(false);
+      if (sourceTimeoutRef.current) {
+        clearTimeout(sourceTimeoutRef.current);
+        sourceTimeoutRef.current = null;
+      }
     }
     // Check if this is a manual reload (user clicked Refresh button or pressed Cmd+R)
     const isManualReload = reloadVersion !== lastReloadVersionRef.current;
@@ -1095,6 +1117,13 @@ export function Editor({ onToggleSidebar, sidebarVisible }: EditorProps) {
     }
   }, [editor]);
 
+  // Listen for slash command image insertion
+  useEffect(() => {
+    const handler = () => handleAddImage();
+    window.addEventListener("slash-command-image", handler);
+    return () => window.removeEventListener("slash-command-image", handler);
+  }, [handleAddImage]);
+
   // Keyboard shortcut for Cmd+K to add link (only when editor is focused)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -1206,6 +1235,63 @@ export function Editor({ onToggleSidebar, sidebarVisible }: EditorProps) {
     }
   }, [editor]);
 
+  // Toggle source mode
+  const toggleSourceMode = useCallback(() => {
+    if (!editor) return;
+    if (!sourceMode) {
+      // Entering source mode: get markdown from editor
+      const md = getMarkdown(editor);
+      setSourceContent(md);
+      setSourceMode(true);
+    } else {
+      // Exiting source mode: parse markdown back to TipTap JSON, then set content
+      const manager = editor.storage.markdown?.manager;
+      if (manager) {
+        try {
+          const parsed = manager.parse(sourceContent);
+          editor.commands.setContent(parsed);
+        } catch {
+          editor.commands.setContent(sourceContent);
+        }
+      } else {
+        editor.commands.setContent(sourceContent);
+      }
+      setSourceMode(false);
+    }
+  }, [editor, sourceMode, sourceContent, getMarkdown]);
+
+  // Listen for toggle-source-mode custom event (from App.tsx shortcut / command palette)
+  useEffect(() => {
+    const handler = () => toggleSourceMode();
+    window.addEventListener("toggle-source-mode", handler);
+    return () => window.removeEventListener("toggle-source-mode", handler);
+  }, [toggleSourceMode]);
+
+  // Auto-save in source mode with debounce
+  const handleSourceChange = useCallback(
+    (value: string) => {
+      setSourceContent(value);
+      if (sourceTimeoutRef.current) {
+        clearTimeout(sourceTimeoutRef.current);
+      }
+      sourceTimeoutRef.current = window.setTimeout(async () => {
+        if (currentNote) {
+          setIsSaving(true);
+          try {
+            lastSaveRef.current = { noteId: currentNote.id, content: value };
+            await saveNote(value, currentNote.id);
+          } catch (error) {
+            console.error("Failed to save note:", error);
+            toast.error("Failed to save note");
+          } finally {
+            setIsSaving(false);
+          }
+        }
+      }, 300);
+    },
+    [currentNote, saveNote],
+  );
+
   if (!currentNote) {
     return (
       <div className="flex-1 flex flex-col bg-bg">
@@ -1252,10 +1338,13 @@ export function Editor({ onToggleSidebar, sidebarVisible }: EditorProps) {
         className={cn(
           "h-11 shrink-0 flex items-center justify-between px-3",
           !sidebarVisible && "pl-22",
+          focusMode && "pl-22",
         )}
         data-tauri-drag-region
       >
-        <div className="titlebar-no-drag flex items-center gap-1 min-w-0">
+        <div
+          className={`titlebar-no-drag flex items-center gap-1 min-w-0 transition-opacity duration-1000 delay-500 ${focusMode ? "opacity-0 pointer-events-none" : "opacity-100"}`}
+        >
           {onToggleSidebar && (
             <IconButton
               onClick={onToggleSidebar}
@@ -1273,7 +1362,9 @@ export function Editor({ onToggleSidebar, sidebarVisible }: EditorProps) {
             {formatDateTime(currentNote.modified)}
           </span>
         </div>
-        <div className="titlebar-no-drag flex items-center gap-px shrink-0">
+        <div
+          className={`titlebar-no-drag flex items-center gap-px shrink-0 transition-opacity duration-1000 delay-500 ${focusMode ? "opacity-0 pointer-events-none" : "opacity-100"}`}
+        >
           {hasExternalChanges ? (
             <Tooltip
               content={`External changes detected (${mod}${isMac ? "" : "+"}R to refresh)`}
@@ -1341,6 +1432,23 @@ export function Editor({ onToggleSidebar, sidebarVisible }: EditorProps) {
               </IconButton>
             </Tooltip>
           )}
+          {currentNote && (
+            <Tooltip
+              content={
+                sourceMode
+                  ? `View Formatted (${mod}${isMac ? "" : "+"}${shift}${isMac ? "" : "+"}M)`
+                  : `View Markdown Source (${mod}${isMac ? "" : "+"}${shift}${isMac ? "" : "+"}M)`
+              }
+            >
+              <IconButton onClick={toggleSourceMode}>
+                {sourceMode ? (
+                  <MarkdownOffIcon className="w-4.75 h-4.75 stroke-[1.4]" />
+                ) : (
+                  <MarkdownIcon className="w-4.75 h-4.75 stroke-[1.4]" />
+                )}
+              </IconButton>
+            </Tooltip>
+          )}
           <DropdownMenu.Root open={copyMenuOpen} onOpenChange={setCopyMenuOpen}>
             <Tooltip
               content={`Copy as... (${mod}${isMac ? "" : "+"}${shift}${isMac ? "" : "+"}C)`}
@@ -1392,196 +1500,241 @@ export function Editor({ onToggleSidebar, sidebarVisible }: EditorProps) {
       </div>
 
       {/* Format Bar */}
-      <FormatBar
-        editor={editor}
-        onAddLink={handleAddLink}
-        onAddImage={handleAddImage}
-      />
+      <div
+        className={`transition-all duration-1000 delay-500 ${focusMode || sourceMode ? "opacity-0 max-h-0 overflow-hidden pointer-events-none" : "opacity-100 max-h-20"}`}
+      >
+        <FormatBar
+          editor={editor}
+          onAddLink={handleAddLink}
+          onAddImage={handleAddImage}
+        />
+      </div>
 
-      {/* TipTap Editor */}
+      {/* Editor content area */}
       <div
         ref={scrollContainerRef}
         className="flex-1 overflow-y-auto overflow-x-hidden relative"
+        dir={textDirection}
       >
-        {searchOpen && (
-          <div className="sticky top-2 z-10 animate-in fade-in slide-in-from-top-4 duration-200 pointer-events-none pr-2 flex justify-end">
-            <div className="pointer-events-auto">
-              <SearchToolbar
-                query={searchQuery}
-                onChange={handleSearchChange}
-                onNext={goToNextMatch}
-                onPrevious={goToPreviousMatch}
-                onClose={() => {
-                  setSearchOpen(false);
-                  setSearchQuery("");
-                  setSearchMatches([]);
-                  setCurrentMatchIndex(0);
-                  // Clear decorations and refocus editor
-                  if (editor) {
-                    updateSearchDecorations([], 0, editor);
-                    editor.commands.focus();
-                  }
-                }}
-                currentMatch={
-                  searchMatches.length === 0 ? 0 : currentMatchIndex + 1
-                }
-                totalMatches={searchMatches.length}
-              />
-            </div>
+        {sourceMode ? (
+          /* Markdown source textarea */
+          <div className="h-full">
+            <textarea
+              value={sourceContent}
+              onChange={(e) => handleSourceChange(e.target.value)}
+              dir={textDirection}
+              className="w-full h-full bg-transparent text-text focus:outline-none resize-none px-6 pt-8 pb-24 mx-auto block"
+              style={{
+                maxWidth: "var(--editor-max-width, 48rem)",
+                fontFamily:
+                  "ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Monaco, 'Courier New', monospace",
+                fontSize: "0.875em",
+                lineHeight: "var(--editor-line-height)",
+                tabSize: 2,
+              }}
+              spellCheck={false}
+            />
           </div>
+        ) : (
+          <>
+            {searchOpen && (
+              <div className="sticky top-2 z-10 animate-in fade-in slide-in-from-top-4 duration-200 pointer-events-none pr-2 flex justify-end">
+                <div className="pointer-events-auto">
+                  <SearchToolbar
+                    query={searchQuery}
+                    onChange={handleSearchChange}
+                    onNext={goToNextMatch}
+                    onPrevious={goToPreviousMatch}
+                    onClose={() => {
+                      setSearchOpen(false);
+                      setSearchQuery("");
+                      setSearchMatches([]);
+                      setCurrentMatchIndex(0);
+                      // Clear decorations and refocus editor
+                      if (editor) {
+                        updateSearchDecorations([], 0, editor);
+                        editor.commands.focus();
+                      }
+                    }}
+                    currentMatch={
+                      searchMatches.length === 0 ? 0 : currentMatchIndex + 1
+                    }
+                    totalMatches={searchMatches.length}
+                  />
+                </div>
+              </div>
+            )}
+            <div
+              className="h-full"
+              onContextMenu={async (e) => {
+                if (!editor?.isActive("table")) return;
+
+                e.preventDefault();
+
+                try {
+                  // Get the position at the click coordinates
+                  const clickPos = editor.view.posAtCoords({
+                    left: e.clientX,
+                    top: e.clientY,
+                  });
+
+                  if (!clickPos) return;
+
+                  // Set the selection to the clicked position
+                  editor.chain().focus().setTextSelection(clickPos.pos).run();
+
+                  // Now work with the updated selection
+                  const { state } = editor;
+                  const { selection } = state;
+                  const { $anchor } = selection;
+
+                  // Find the table cell/header node
+                  let cellDepth = $anchor.depth;
+                  while (
+                    cellDepth > 0 &&
+                    state.doc.resolve($anchor.pos).node(cellDepth).type.name !==
+                      "tableCell" &&
+                    state.doc.resolve($anchor.pos).node(cellDepth).type.name !==
+                      "tableHeader"
+                  ) {
+                    cellDepth--;
+                  }
+
+                  // Guard: if we didn't find a table cell, bail out
+                  if (cellDepth <= 0) return;
+
+                  const resolvedNode = state.doc
+                    .resolve($anchor.pos)
+                    .node(cellDepth);
+                  if (
+                    resolvedNode.type.name !== "tableCell" &&
+                    resolvedNode.type.name !== "tableHeader"
+                  ) {
+                    return;
+                  }
+
+                  // Get the cell position
+                  const cellPos = $anchor.before(cellDepth);
+
+                  // Check if we're in the first column (index 0 in parent row)
+                  const rowNode = state.doc
+                    .resolve(cellPos)
+                    .node(cellDepth - 1);
+                  let cellIndex = 0;
+                  rowNode.forEach((_node, offset) => {
+                    if (offset < cellPos - $anchor.before(cellDepth - 1) - 1) {
+                      cellIndex++;
+                    }
+                  });
+                  const isFirstColumn = cellIndex === 0;
+
+                  // Check if we're in the first row (index 0 in parent table)
+                  const tableNode = state.doc
+                    .resolve(cellPos)
+                    .node(cellDepth - 2);
+                  let rowIndex = 0;
+                  tableNode.forEach((_node, offset) => {
+                    if (
+                      offset <
+                      $anchor.before(cellDepth - 1) -
+                        $anchor.before(cellDepth - 2) -
+                        1
+                    ) {
+                      rowIndex++;
+                    }
+                  });
+                  const isFirstRow = rowIndex === 0;
+
+                  const menuItems = [];
+
+                  // Only show "Add Column Before" if not in first column
+                  if (!isFirstColumn) {
+                    menuItems.push(
+                      await MenuItem.new({
+                        text: "Add Column Before",
+                        action: () =>
+                          editor.chain().focus().addColumnBefore().run(),
+                      }),
+                    );
+                  }
+                  menuItems.push(
+                    await MenuItem.new({
+                      text: "Add Column After",
+                      action: () =>
+                        editor.chain().focus().addColumnAfter().run(),
+                    }),
+                  );
+                  menuItems.push(
+                    await MenuItem.new({
+                      text: "Delete Column",
+                      action: () => editor.chain().focus().deleteColumn().run(),
+                    }),
+                  );
+                  menuItems.push(
+                    await PredefinedMenuItem.new({ item: "Separator" }),
+                  );
+
+                  // Only show "Add Row Above" if not in first row
+                  if (!isFirstRow) {
+                    menuItems.push(
+                      await MenuItem.new({
+                        text: "Add Row Above",
+                        action: () =>
+                          editor.chain().focus().addRowBefore().run(),
+                      }),
+                    );
+                  }
+                  menuItems.push(
+                    await MenuItem.new({
+                      text: "Add Row Below",
+                      action: () => editor.chain().focus().addRowAfter().run(),
+                    }),
+                  );
+                  menuItems.push(
+                    await MenuItem.new({
+                      text: "Delete Row",
+                      action: () => editor.chain().focus().deleteRow().run(),
+                    }),
+                  );
+                  menuItems.push(
+                    await PredefinedMenuItem.new({ item: "Separator" }),
+                  );
+                  menuItems.push(
+                    await MenuItem.new({
+                      text: "Toggle Header Row",
+                      action: () =>
+                        editor.chain().focus().toggleHeaderRow().run(),
+                    }),
+                  );
+                  menuItems.push(
+                    await MenuItem.new({
+                      text: "Toggle Header Column",
+                      action: () =>
+                        editor.chain().focus().toggleHeaderColumn().run(),
+                    }),
+                  );
+                  menuItems.push(
+                    await PredefinedMenuItem.new({ item: "Separator" }),
+                  );
+                  menuItems.push(
+                    await MenuItem.new({
+                      text: "Delete Table",
+                      action: () => editor.chain().focus().deleteTable().run(),
+                    }),
+                  );
+
+                  const menu = await Menu.new({ items: menuItems });
+
+                  await menu.popup();
+                } catch (err) {
+                  console.error("Table context menu error:", err);
+                }
+              }}
+            >
+              <EditorContent editor={editor} className="h-full text-text" />
+            </div>
+          </>
         )}
-        <div
-          className="h-full"
-          onContextMenu={async (e) => {
-            if (!editor?.isActive("table")) return;
-
-            e.preventDefault();
-
-            try {
-              // Get the position at the click coordinates
-              const clickPos = editor.view.posAtCoords({
-                left: e.clientX,
-                top: e.clientY,
-              });
-
-              if (!clickPos) return;
-
-              // Set the selection to the clicked position
-              editor.chain().focus().setTextSelection(clickPos.pos).run();
-
-              // Now work with the updated selection
-              const { state } = editor;
-              const { selection } = state;
-              const { $anchor } = selection;
-
-              // Find the table cell/header node
-              let cellDepth = $anchor.depth;
-              while (
-                cellDepth > 0 &&
-                state.doc.resolve($anchor.pos).node(cellDepth).type.name !==
-                  "tableCell" &&
-                state.doc.resolve($anchor.pos).node(cellDepth).type.name !==
-                  "tableHeader"
-              ) {
-                cellDepth--;
-              }
-
-              // Guard: if we didn't find a table cell, bail out
-              if (cellDepth <= 0) return;
-
-              const resolvedNode = state.doc.resolve($anchor.pos).node(cellDepth);
-              if (
-                resolvedNode.type.name !== "tableCell" &&
-                resolvedNode.type.name !== "tableHeader"
-              ) {
-                return;
-              }
-
-              // Get the cell position
-              const cellPos = $anchor.before(cellDepth);
-
-              // Check if we're in the first column (index 0 in parent row)
-              const rowNode = state.doc.resolve(cellPos).node(cellDepth - 1);
-              let cellIndex = 0;
-              rowNode.forEach((_node, offset) => {
-                if (offset < cellPos - $anchor.before(cellDepth - 1) - 1) {
-                  cellIndex++;
-                }
-              });
-              const isFirstColumn = cellIndex === 0;
-
-              // Check if we're in the first row (index 0 in parent table)
-              const tableNode = state.doc.resolve(cellPos).node(cellDepth - 2);
-              let rowIndex = 0;
-              tableNode.forEach((_node, offset) => {
-                if (
-                  offset <
-                  $anchor.before(cellDepth - 1) -
-                    $anchor.before(cellDepth - 2) -
-                    1
-                ) {
-                  rowIndex++;
-                }
-              });
-              const isFirstRow = rowIndex === 0;
-
-              const menuItems = [];
-
-              // Only show "Add Column Before" if not in first column
-              if (!isFirstColumn) {
-                menuItems.push(
-                  await MenuItem.new({
-                    text: "Add Column Before",
-                    action: () => editor.chain().focus().addColumnBefore().run(),
-                  }),
-                );
-              }
-              menuItems.push(
-                await MenuItem.new({
-                  text: "Add Column After",
-                  action: () => editor.chain().focus().addColumnAfter().run(),
-                }),
-              );
-              menuItems.push(
-                await MenuItem.new({
-                  text: "Delete Column",
-                  action: () => editor.chain().focus().deleteColumn().run(),
-                }),
-              );
-              menuItems.push(await PredefinedMenuItem.new({ item: "Separator" }));
-
-              // Only show "Add Row Above" if not in first row
-              if (!isFirstRow) {
-                menuItems.push(
-                  await MenuItem.new({
-                    text: "Add Row Above",
-                    action: () => editor.chain().focus().addRowBefore().run(),
-                  }),
-                );
-              }
-              menuItems.push(
-                await MenuItem.new({
-                  text: "Add Row Below",
-                  action: () => editor.chain().focus().addRowAfter().run(),
-                }),
-              );
-              menuItems.push(
-                await MenuItem.new({
-                  text: "Delete Row",
-                  action: () => editor.chain().focus().deleteRow().run(),
-                }),
-              );
-              menuItems.push(await PredefinedMenuItem.new({ item: "Separator" }));
-              menuItems.push(
-                await MenuItem.new({
-                  text: "Toggle Header Row",
-                  action: () => editor.chain().focus().toggleHeaderRow().run(),
-                }),
-              );
-              menuItems.push(
-                await MenuItem.new({
-                  text: "Toggle Header Column",
-                  action: () => editor.chain().focus().toggleHeaderColumn().run(),
-                }),
-              );
-              menuItems.push(await PredefinedMenuItem.new({ item: "Separator" }));
-              menuItems.push(
-                await MenuItem.new({
-                  text: "Delete Table",
-                  action: () => editor.chain().focus().deleteTable().run(),
-                }),
-              );
-
-              const menu = await Menu.new({ items: menuItems });
-
-              await menu.popup();
-            } catch (err) {
-              console.error("Table context menu error:", err);
-            }
-          }}
-        >
-          <EditorContent editor={editor} className="h-full text-text" />
-        </div>
       </div>
     </div>
   );

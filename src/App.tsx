@@ -38,10 +38,23 @@ function AppContent() {
   const [sidebarVisible, setSidebarVisible] = useState(true);
   const [aiModalOpen, setAiModalOpen] = useState(false);
   const [aiEditing, setAiEditing] = useState(false);
+  const [focusMode, setFocusMode] = useState(false);
 
   const toggleSidebar = useCallback(() => {
     setSidebarVisible((prev) => !prev);
   }, []);
+
+  const toggleFocusMode = useCallback(() => {
+    setFocusMode((prev) => {
+      // Don't enter focus mode without a selected note
+      if (!prev && !selectedNoteId) return prev;
+      if (prev) {
+        // Exiting focus mode — always restore sidebar
+        setSidebarVisible(true);
+      }
+      return !prev;
+    });
+  }, [selectedNoteId]);
 
   const toggleSettings = useCallback(() => {
     setView((prev) => (prev === "settings" ? "notes" : "settings"));
@@ -134,6 +147,31 @@ function AppContent() {
         return;
       }
 
+      // Cmd+Shift+Enter - Toggle focus mode
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === "Enter") {
+        e.preventDefault();
+        toggleFocusMode();
+        return;
+      }
+
+      // Cmd+Shift+M - Toggle markdown source mode
+      if (
+        (e.metaKey || e.ctrlKey) &&
+        e.shiftKey &&
+        e.key.toLowerCase() === "m"
+      ) {
+        e.preventDefault();
+        window.dispatchEvent(new CustomEvent("toggle-source-mode"));
+        return;
+      }
+
+      // Escape exits focus mode when not in editor
+      if (e.key === "Escape" && focusMode && !isInEditor) {
+        e.preventDefault();
+        toggleFocusMode();
+        return;
+      }
+
       // Trap Tab/Shift+Tab in notes view only - prevent focus navigation
       // TipTap handles indentation internally before event bubbles up
       if (e.key === "Tab") {
@@ -149,7 +187,11 @@ function AppContent() {
       }
 
       // Cmd/Ctrl+Shift+F - Open sidebar search
-      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "f") {
+      if (
+        (e.metaKey || e.ctrlKey) &&
+        e.shiftKey &&
+        e.key.toLowerCase() === "f"
+      ) {
         e.preventDefault();
         setSidebarVisible(true);
         window.dispatchEvent(new CustomEvent("open-sidebar-search"));
@@ -246,6 +288,8 @@ function AppContent() {
     selectNote,
     toggleSettings,
     toggleSidebar,
+    toggleFocusMode,
+    focusMode,
     view,
   ]);
 
@@ -275,10 +319,15 @@ function AppContent() {
           <SettingsPage onBack={closeSettings} />
         ) : (
           <>
-            {sidebarVisible && <Sidebar onOpenSettings={toggleSettings} />}
+            <div
+              className={`transition-all duration-500 ease-out overflow-hidden ${!sidebarVisible || focusMode ? "opacity-0 -translate-x-4 w-0 pointer-events-none" : "opacity-100 translate-x-0 w-64"}`}
+            >
+              <Sidebar onOpenSettings={toggleSettings} />
+            </div>
             <Editor
               onToggleSidebar={toggleSidebar}
-              sidebarVisible={sidebarVisible}
+              sidebarVisible={sidebarVisible && !focusMode}
+              focusMode={focusMode}
             />
           </>
         )}
@@ -300,6 +349,8 @@ function AppContent() {
         onClose={handleClosePalette}
         onOpenSettings={toggleSettings}
         onOpenAiModal={() => setAiModalOpen(true)}
+        focusMode={focusMode}
+        onToggleFocusMode={toggleFocusMode}
       />
       <AiEditModal
         open={aiModalOpen}
