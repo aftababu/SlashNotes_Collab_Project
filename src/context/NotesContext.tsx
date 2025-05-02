@@ -69,6 +69,11 @@ export function NotesProvider({ children }: { children: ReactNode }) {
   // Ref to access selectedNoteId in file watcher without re-registering listener
   const selectedNoteIdRef = useRef<string | null>(null);
   selectedNoteIdRef.current = selectedNoteId;
+  // Ref to access notes in search callback without re-creating it on every notes change
+  const notesRef = useRef<NoteMetadata[]>([]);
+  notesRef.current = notes;
+  // Monotonic counter to ignore stale async search responses
+  const searchRequestIdRef = useRef(0);
 
   const refreshNotes = useCallback(async () => {
     if (!notesFolder) return;
@@ -305,26 +310,67 @@ export function NotesProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const search = useCallback(async (query: string) => {
+    const requestId = ++searchRequestIdRef.current;
     setSearchQuery(query);
-    if (!query.trim()) {
+
+    const trimmedQuery = query.trim();
+    if (!trimmedQuery) {
       setSearchResults([]);
+      setIsSearching(false);
       return;
     }
 
+    const queryLower = trimmedQuery.toLowerCase();
+    // Instant local results for responsive UX while full-text search runs.
+    const instantResults: SearchResult[] = notesRef.current
+      .filter(
+        (note) =>
+          note.title.toLowerCase().includes(queryLower) ||
+          note.preview.toLowerCase().includes(queryLower),
+      )
+      .slice(0, 20)
+      .map((note) => ({
+        id: note.id,
+        title: note.title,
+        preview: note.preview,
+        modified: note.modified,
+        score: 0,
+      }));
+
+    // Show instant local matches immediately; clear stale results if none match.
+    setSearchResults(instantResults);
+
     setIsSearching(true);
     try {
-      const results = await notesService.searchNotes(query);
-      setSearchResults(results);
+      const results = await notesService.searchNotes(trimmedQuery);
+      if (requestId !== searchRequestIdRef.current) return;
+      if (results.length === 0) {
+        // If neither backend nor instant matches found, clear results only now
+        // (after async search settles) to avoid transient empty states.
+        setSearchResults(instantResults);
+      } else {
+        // Merge backend + instant results, deduping by note id.
+        const merged = [...results];
+        const seen = new Set(results.map((result) => result.id));
+        for (const result of instantResults) {
+          if (!seen.has(result.id)) {
+            merged.push(result);
+          }
+        }
+        setSearchResults(merged);
+      }
     } catch (err) {
       console.error("Search failed:", err);
-    } finally {
-      setIsSearching(false);
     }
+    if (requestId !== searchRequestIdRef.current) return;
+    setIsSearching(false);
   }, []);
 
   const clearSearch = useCallback(() => {
+    searchRequestIdRef.current += 1;
     setSearchQuery("");
     setSearchResults([]);
+    setIsSearching(false);
   }, []);
 
   // Load initial state
