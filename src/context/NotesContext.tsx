@@ -437,6 +437,16 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     };
   }, [refreshNotes]);
 
+  // Listen for "select-note" events from the backend (CLI, drag-drop, Open With for notes-folder files)
+  useEffect(() => {
+    const unlisten = listen<string>("select-note", (event) => {
+      selectNote(event.payload);
+    });
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [selectNote]);
+
   // Refresh notes when folder changes
   useEffect(() => {
     if (notesFolder) {
@@ -537,5 +547,13 @@ export function useNotesActions() {
 export function useNotes() {
   const data = useNotesData();
   const actions = useNotesActions();
+  return { ...data, ...actions };
+}
+
+// Optional hook that returns null when outside a NotesProvider (for preview mode)
+export function useOptionalNotes() {
+  const data = useContext(NotesDataContext);
+  const actions = useContext(NotesActionsContext);
+  if (!data || !actions) return null;
   return { ...data, ...actions };
 }
