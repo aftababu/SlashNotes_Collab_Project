@@ -2,9 +2,9 @@
 
 <img src="docs/app-icon.png" alt="Scratch" width="128" height="128" style="border-radius: 22px; margin-bottom: 8px;">
 
-A minimalist, offline-first markdown note-taking app for macOS and Windows.
+A minimalist, offline-first markdown note-taking app for macOS, Windows, and Linux.
 
-![macOS](https://img.shields.io/badge/platform-macOS-lightgrey) ![Windows](https://img.shields.io/badge/platform-Windows-blue)
+![macOS](https://img.shields.io/badge/platform-macOS-lightgrey) ![Windows](https://img.shields.io/badge/platform-Windows-blue) ![Linux](https://img.shields.io/badge/platform-Linux-orange)
 
 [Website](https://www.ericli.io/scratch) · [Releases](https://github.com/erictli/scratch/releases)
 
@@ -13,6 +13,7 @@ A minimalist, offline-first markdown note-taking app for macOS and Windows.
 - **Offline-first** - No cloud, no account, no internet required
 - **Markdown-based** - Notes stored as plain `.md` files you own
 - **WYSIWYG editing** - Rich text editing that saves as markdown
+- **Preview mode** - Open any `.md` file via drag-and-drop, CLI, or "Open With" without a notes folder
 - **Markdown source mode** - Toggle to view and edit raw markdown (`Cmd+Shift+M`)
 - **Slash commands** - Type `/` to quickly insert headings, lists, code blocks, and more
 - **Focus mode** - Distraction-free writing with animated sidebar/toolbar fade (`Cmd+Shift+Enter`)
@@ -46,7 +47,11 @@ brew install --cask erictli/tap/scratch
 
 ### Windows
 
-Pre-built Windows binaries are not yet available. To run on Windows, build from source (see below).
+Download the latest `.exe` installer from [Releases](https://github.com/erictli/scratch/releases) and run it. WebView2 will be downloaded automatically if needed.
+
+### Linux
+
+Download the latest `.AppImage` or `.deb` from [Releases](https://github.com/erictli/scratch/releases).
 
 ### From Source
 
