@@ -752,6 +752,13 @@ table.not-prose th {
   animation-name: tooltip-slide-in-from-right;
 }
 
+/* Suppress all transitions during interface zoom changes */
+.zoom-no-transition *,
+.zoom-no-transition *::before,
+.zoom-no-transition *::after {
+  transition: none !important;
+}
+
 /* Print styles for clean PDF export */
 @media print {
   /* Disable all transitions to prevent color flashing after print */
