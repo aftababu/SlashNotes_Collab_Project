@@ -427,6 +427,7 @@ export function Editor({
     Array<{ from: number; to: number }>
   >([]);
   const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const saveTimeoutRef = useRef<number | null>(null);
   const linkPopupRef = useRef<TippyInstance | null>(null);
   const isLoadingRef = useRef(false);
@@ -1204,10 +1205,22 @@ export function Editor({
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, []);
 
+  // Open and focus editor search (supports repeated Cmd/Ctrl+F)
+  const openEditorSearch = useCallback(() => {
+    setSearchOpen(true);
+    requestAnimationFrame(() => {
+      searchInputRef.current?.focus();
+    });
+  }, []);
+
   // Cmd+F to open search (works when document/editor area is focused)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "f") {
+      if (
+        (e.metaKey || e.ctrlKey) &&
+        !e.shiftKey &&
+        e.key.toLowerCase() === "f"
+      ) {
         if (!currentNote || !editor) return;
 
         const target = e.target as HTMLElement;
@@ -1228,12 +1241,12 @@ export function Editor({
 
         // Open search for the editor
         e.preventDefault();
-        setSearchOpen(true);
+        openEditorSearch();
       }
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [editor, currentNote]);
+  }, [editor, currentNote, openEditorSearch]);
 
   // Clear search on note switch
   useEffect(() => {
@@ -1524,7 +1537,7 @@ export function Editor({
           )}
           {currentNote && (
             <Tooltip content={`Find in note (${mod}${isMac ? "" : "+"}F)`}>
-              <IconButton onClick={() => setSearchOpen(true)}>
+              <IconButton onClick={openEditorSearch}>
                 <SearchIcon className="w-4.25 h-4.25 stroke-[1.6]" />
               </IconButton>
             </Tooltip>
@@ -1656,6 +1669,7 @@ export function Editor({
               <div className="sticky top-2 z-10 animate-in fade-in slide-in-from-top-4 duration-200 pointer-events-none pr-2 flex justify-end">
                 <div className="pointer-events-auto">
                   <SearchToolbar
+                    inputRef={searchInputRef}
                     query={searchQuery}
                     onChange={handleSearchChange}
                     onNext={goToNextMatch}
