@@ -95,6 +95,18 @@ Many more shortcuts and features are available in the app—explore via the comm
 
 [Tauri](https://tauri.app/) · [React](https://react.dev/) · [TipTap](https://tiptap.dev/) · [Tailwind CSS](https://tailwindcss.com/) · [Tantivy](https://github.com/quickwit-oss/tantivy)
 
+## Contributing
+
+Contributions and suggestions are welcome.
+
+What makes Scratch special is its minimal feature set and focus on user experience. We're not trying to build Obsidian or Notion, so not every feature will be a fit.
+
+**Small fixes and improvements:** go ahead and open a PR, we'll try to merge these in regularly.
+
+**Bigger changes:** if you're not sure whether a feature fits, open an issue first and ask.
+
+**Review process:** I generally won't go back and forth with review comments. Try to address any CodeRabbit comments on your PR. From there, I'll make any additional changes directly.
+
 ## License
 
 MIT
