@@ -41,6 +41,8 @@ import { Frontmatter } from "./Frontmatter";
 import { LinkEditor } from "./LinkEditor";
 import { SearchToolbar } from "./SearchToolbar";
 import { SlashCommand } from "./SlashCommand";
+import { Wikilink, type WikilinkStorage } from "./Wikilink";
+import { WikilinkSuggestion } from "./WikilinkSuggestion";
 import { cn } from "../../lib/utils";
 import { plainTextFromMarkdown } from "../../lib/plainText";
 import { Button, IconButton, ToolbarButton, Tooltip } from "../ui";
@@ -63,6 +65,7 @@ import {
   InlineCodeIcon,
   SeparatorIcon,
   LinkIcon,
+  BracketsIcon,
   ImageIcon,
   TableIcon,
   SpinnerIcon,
@@ -304,6 +307,13 @@ function FormatBar({ editor, onAddLink, onAddImage }: FormatBarProps) {
       >
         <LinkIcon className="w-4.5 h-4.5 stroke-[1.5]" />
       </ToolbarButton>
+      <ToolbarButton
+        onClick={() => editor.chain().focus().insertContent("[[").run()}
+        isActive={false}
+        title="Insert Wikilink"
+      >
+        <BracketsIcon className="w-4.5 h-4.5 stroke-[1.5]" />
+      </ToolbarButton>
       <ToolbarButton onClick={onAddImage} isActive={false} title="Add Image">
         <ImageIcon className="w-4.5 h-4.5 stroke-[1.5]" />
       </ToolbarButton>
@@ -436,6 +446,11 @@ export function Editor({
   const currentNoteIdRef = useRef<string | null>(null);
   // Track if we need to save (use ref to avoid computing markdown on every keystroke)
   const needsSaveRef = useRef(false);
+  // Stable refs for wikilink click handler (avoids re-registering listener on every notes change)
+  const notesRef = useRef(notes);
+  notesRef.current = notes;
+  const notesCtxRef = useRef(notesCtx);
+  notesCtxRef.current = notesCtx;
 
   // Keep ref in sync with current note ID
   currentNoteIdRef.current = currentNote?.id ?? null;
@@ -661,6 +676,8 @@ export function Editor({
         currentIndex: 0,
       }),
       SlashCommand,
+      Wikilink,
+      WikilinkSuggestion,
     ],
     editorProps: {
       attributes: {
@@ -788,6 +805,16 @@ export function Editor({
     onEditorReady?.(editor);
   }, [editor, onEditorReady]);
 
+  // Sync notes list into editor storage for wikilink autocomplete
+  useEffect(() => {
+    if (!editor || !notes) return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const storage = (editor.storage as any).wikilink as
+      | WikilinkStorage
+      | undefined;
+    if (storage) storage.notes = notes;
+  }, [editor, notes]);
+
   // Search navigation functions (defined after editor is created)
   const goToNextMatch = useCallback(() => {
     if (searchMatches.length === 0 || !editor) return;
@@ -833,17 +860,36 @@ export function Editor({
     return () => clearTimeout(timer);
   }, [searchQuery, editor, findMatches, updateSearchDecorations]);
 
-  // Prevent links from opening unless Cmd/Ctrl+Click
+  // Handle clicks on wikilinks and external links
   useEffect(() => {
     if (!editor) return;
 
-    const handleLinkClick = (e: MouseEvent) => {
-      const link = (e.target as HTMLElement).closest("a");
+    const handleEditorClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
 
+      // Check for wikilink click first (no modifier key required)
+      const wikilinkEl = target.closest("[data-wikilink]");
+      if (wikilinkEl) {
+        e.preventDefault();
+        const noteTitle = wikilinkEl.getAttribute("data-note-title");
+        const currentNotes = notesRef.current;
+        if (noteTitle && currentNotes) {
+          const note = currentNotes.find(
+            (n) => n.title.toLowerCase() === noteTitle.toLowerCase(),
+          );
+          if (note) {
+            notesCtxRef.current?.selectNote(note.id);
+          } else {
+            toast.info(`Note "${noteTitle}" does not exist yet`);
+          }
+        }
+        return;
+      }
+
+      // Prevent links from opening unless Cmd/Ctrl+Click
+      const link = target.closest("a");
       if (link) {
-        e.preventDefault(); // Always prevent default link behavior
-
-        // If Cmd/Ctrl is pressed, open in browser
+        e.preventDefault();
         if ((e.metaKey || e.ctrlKey) && link.href) {
           if (isAllowedUrlScheme(link.href)) {
             openUrl(link.href).catch((error) =>
@@ -857,10 +903,10 @@ export function Editor({
     };
 
     const editorElement = editor.view.dom;
-    editorElement.addEventListener("click", handleLinkClick);
+    editorElement.addEventListener("click", handleEditorClick);
 
     return () => {
-      editorElement.removeEventListener("click", handleLinkClick);
+      editorElement.removeEventListener("click", handleEditorClick);
     };
   }, [editor]);
 
