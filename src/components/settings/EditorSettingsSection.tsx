@@ -1,7 +1,7 @@
 import { useTheme } from "../../context/ThemeContext";
-import { Button, Input, Select } from "../ui";
+import { Button, IconButton, Input, Select } from "../ui";
 import type { FontFamily, TextDirection, EditorWidth } from "../../types/note";
-import { EyeIcon } from "../icons";
+import { EyeIcon, MinusIcon, PlusIcon } from "../icons";
 
 // Text direction options
 const textDirectionOptions: { value: TextDirection; label: string }[] = [
@@ -238,32 +238,28 @@ export function AppearanceSettingsSection() {
             <label className="text-sm text-text font-medium">
               Interface Zoom
             </label>
-            <div className="flex items-center gap-2 w-40 justify-end">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() =>
-                  setInterfaceZoom((prev) => prev - 0.05)
-                }
+            <div className="flex items-center gap-1 w-40">
+              <IconButton
+                variant="outline"
+                size="md"
+                onClick={() => setInterfaceZoom((prev) => prev - 0.05)}
                 disabled={interfaceZoom <= 0.7}
-                className="px-2"
+                title="Zoom out"
               >
-                −
-              </Button>
-              <span className="text-sm font-medium tabular-nums w-12 text-center">
+                <MinusIcon className="w-4 h-4" />
+              </IconButton>
+              <span className="text-sm font-medium tabular-nums flex-1 text-center">
                 {Math.round(interfaceZoom * 100)}%
               </span>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() =>
-                  setInterfaceZoom((prev) => prev + 0.05)
-                }
+              <IconButton
+                variant="outline"
+                size="md"
+                onClick={() => setInterfaceZoom((prev) => prev + 0.05)}
                 disabled={interfaceZoom >= 1.5}
-                className="px-2"
+                title="Zoom in"
               >
-                +
-              </Button>
+                <PlusIcon className="w-4 h-4" />
+              </IconButton>
             </div>
           </div>
         </div>

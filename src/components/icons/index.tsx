@@ -23,6 +23,23 @@ export function PilcrowIcon({ className = "w-4.5 h-4.5" }: IconProps) {
   );
 }
 
+export function MinusIcon({ className = "w-4.5 h-4.5" }: IconProps) {
+  return (
+    <svg
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M5 12l14 0" />
+    </svg>
+  );
+}
+
 export function PlusIcon({ className = "w-4.5 h-4.5" }: IconProps) {
   return (
     <svg
