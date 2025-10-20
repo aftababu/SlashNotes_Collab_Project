@@ -15,13 +15,14 @@ A minimalist, offline-first markdown note-taking app for macOS, Windows, and Lin
 - **WYSIWYG editing** - Rich text editing that saves as markdown
 - **Preview mode** - Open any `.md` file via drag-and-drop or "Open With" without a notes folder
 - **Markdown source mode** - Toggle to view and edit raw markdown (`Cmd+Shift+M`)
+- **Wikilinks** - Type `[[` to link between notes with autocomplete
 - **Slash commands** - Type `/` to quickly insert headings, lists, code blocks, and more
 - **Focus mode** - Distraction-free writing with animated sidebar/toolbar fade (`Cmd+Shift+Enter`)
 - **Edit with Claude Code or OpenAI Codex** - Use your local Claude Code CLI or Codex CLI to edit notes
 - **Works with other AI agents** - Detects external file changes
 - **Keyboard optimized** - Lots of shortcuts and a command palette
 - **Customizable** - Theme, typography, page width, and RTL text direction
-- **Git integration** - Optional version control for your notes
+- **Git integration** - Optional version control with push/pull for multi-device sync
 - **Lightweight** - 5-10x smaller than Obsidian or Notion
 
 ## Screenshot
@@ -85,6 +86,7 @@ Scratch is designed to be usable without a mouse. Here are the essentials to get
 | `Cmd+,`           | Open settings          |
 | `Cmd+\`           | Toggle sidebar         |
 | `Cmd+B/I`         | Bold/Italic            |
+| `Cmd+=/-/0`       | Zoom in/out/reset      |
 | `↑/↓`             | Navigate notes         |
 
 **Note:** On Windows, use `Ctrl` instead of `Cmd` for all shortcuts.
