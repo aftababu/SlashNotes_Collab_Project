@@ -547,11 +547,14 @@ fn strip_markdown(text: &str) -> String {
     result.trim().to_string()
 }
 
-/// Filter for WalkDir: skips dot-directories (e.g. .scratch, .git) and assets/.
+/// Directories to exclude from note discovery and ID resolution.
+const EXCLUDED_DIRS: &[&str] = &[".git", ".scratch", ".obsidian", ".trash", "assets"];
+
+/// Filter for WalkDir: skips excluded directories.
 fn is_visible_notes_entry(entry: &walkdir::DirEntry) -> bool {
     if entry.file_type().is_dir() {
         let name = entry.file_name().to_str().unwrap_or("");
-        return !name.starts_with('.') && name != "assets";
+        return !EXCLUDED_DIRS.contains(&name);
     }
     true
 }
@@ -561,11 +564,12 @@ fn is_visible_notes_entry(entry: &walkdir::DirEntry) -> bool {
 fn id_from_abs_path(notes_root: &Path, file_path: &Path) -> Option<String> {
     let rel = file_path.strip_prefix(notes_root).ok()?;
 
-    // Skip excluded directories (dot-dirs catch .scratch, .git, etc.)
-    for component in rel.components() {
+    // Skip files inside excluded directories (.git, .scratch, assets, etc.)
+    // Only block specific known dirs so that dot-prefixed *files* like ".foo.md" are still visible.
+    for component in rel.parent().unwrap_or(Path::new("")).components() {
         if let std::path::Component::Normal(name) = component {
             let name_str = name.to_str()?;
-            if name_str.starts_with('.') || name_str == "assets" {
+            if EXCLUDED_DIRS.contains(&name_str) {
                 return None;
             }
         }
