@@ -18,6 +18,7 @@ import {
   check as checkForUpdate,
   type Update,
 } from "@tauri-apps/plugin-updater";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import * as aiService from "./services/ai";
 import type { AiProvider } from "./services/ai";
 
@@ -517,6 +518,18 @@ function UpdateToast({
 
 function App() {
   const { isPreview, previewFile } = useMemo(getWindowMode, []);
+
+  // Cmd/Ctrl+W — close window (works in both preview and folder mode)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "w") {
+        e.preventDefault();
+        getCurrentWindow().close().catch(console.error);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   // Add platform class for OS-specific styling (e.g., keyboard shortcuts)
   useEffect(() => {
