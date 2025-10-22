@@ -14,6 +14,7 @@ use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl};
 use tauri::webview::WebviewWindowBuilder;
 use tauri_plugin_clipboard_manager::ClipboardExt;
 use tokio::fs;
+use tokio::io::AsyncWriteExt;
 
 mod git;
 
@@ -1310,6 +1311,114 @@ async fn save_file_direct(path: String, content: String) -> Result<FileContent, 
 }
 
 #[tauri::command]
+async fn import_file_to_folder(
+    app: AppHandle,
+    path: String,
+    state: State<'_, AppState>,
+) -> Result<NoteMetadata, String> {
+    let source = validate_preview_path(&path)?;
+    if !source.is_file() {
+        return Err(format!("Not a file: {}", path));
+    }
+
+    let folder = {
+        let app_config = state.app_config.read().expect("app_config read lock");
+        app_config
+            .notes_folder
+            .clone()
+            .ok_or("Notes folder not set")?
+    };
+    let folder_path = PathBuf::from(&folder);
+
+    // Read the source file content
+    let content = fs::read_to_string(&source)
+        .await
+        .map_err(|e| format!("Failed to read source file: {}", e))?;
+
+    // Derive the note ID from the title (H1 heading), falling back to filename
+    let extracted_title = extract_title(&content);
+    let base_name = if extracted_title.trim().is_empty() {
+        source
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("Untitled")
+            .to_string()
+    } else {
+        extracted_title.trim().to_string()
+    };
+    let base_id = sanitize_filename(&base_name);
+
+    // Atomically create the file and write content via the handle
+    let mut final_id = base_id.clone();
+    let mut counter = 1;
+    loop {
+        let candidate = abs_path_from_id(&folder_path, &final_id)?;
+        match fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&candidate)
+            .await
+        {
+            Ok(mut file) => {
+                if let Err(e) = file.write_all(content.as_bytes()).await {
+                    // Clean up the empty file on write failure
+                    let _ = fs::remove_file(&candidate).await;
+                    return Err(format!("Failed to write file: {}", e));
+                }
+                break;
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                final_id = format!("{}-{}", base_id, counter);
+                counter += 1;
+            }
+            Err(e) => return Err(format!("Failed to create file: {}", e)),
+        }
+    };
+
+    let modified = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+
+    // Update search index
+    {
+        let index = state.search_index.lock().expect("search index mutex");
+        if let Some(ref search_index) = *index {
+            let _ = search_index.index_note(&final_id, &extracted_title, &content, modified);
+        }
+    }
+
+    let preview = content
+        .lines()
+        .skip(1)
+        .filter(|l| !l.trim().is_empty())
+        .take(3)
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    let metadata = NoteMetadata {
+        id: final_id,
+        title: extracted_title,
+        preview,
+        modified,
+    };
+
+    // Update notes cache so fallback search sees the imported note immediately
+    {
+        let mut cache = state.notes_cache.write().expect("cache write lock");
+        cache.insert(metadata.id.clone(), metadata.clone());
+    }
+
+    // Tell the main window to select the imported note and focus it
+    let _ = app.emit_to("main", "select-note", &metadata.id);
+    if let Some(main_window) = app.get_webview_window("main") {
+        let _ = main_window.set_focus();
+    }
+
+    Ok(metadata)
+}
+
+#[tauri::command]
 async fn search_notes(query: String, state: State<'_, AppState>) -> Result<Vec<SearchResult>, String> {
     let trimmed_query = query.trim().to_string();
     if trimmed_query.is_empty() {
@@ -2585,6 +2694,7 @@ pub fn run() {
             ai_execute_codex,
             read_file_direct,
             save_file_direct,
+            import_file_to_folder,
             open_file_preview,
         ])
         .build(tauri::generate_context!())
