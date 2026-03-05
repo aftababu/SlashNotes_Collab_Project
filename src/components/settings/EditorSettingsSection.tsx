@@ -15,6 +15,7 @@ const editorWidthOptions: { value: EditorWidth; label: string }[] = [
   { value: "normal", label: "Normal" },
   { value: "wide", label: "Wide" },
   { value: "full", label: "Full" },
+  { value: "custom", label: "Custom" },
 ];
 
 // Font family options
@@ -46,6 +47,8 @@ export function AppearanceSettingsSection() {
     setEditorWidth,
     interfaceZoom,
     setInterfaceZoom,
+    customEditorWidthPx,
+    setCustomEditorWidthPx,
   } = useTheme();
 
   // Validated numeric change handler
@@ -232,6 +235,30 @@ export function AppearanceSettingsSection() {
               ))}
             </Select>
           </div>
+          {editorWidth === "custom" && (
+            <div className="flex items-center justify-between">
+              <label className="text-sm text-text font-medium">
+                Custom Width
+              </label>
+              <div className="relative w-40 flex items-center gap-2">
+                <Input
+                  type="number"
+                  min="480"
+                  max="3840"
+                  step="10"
+                  value={customEditorWidthPx}
+                  onChange={(e) => {
+                    const parsed = parseInt(e.target.value, 10);
+                    if (Number.isFinite(parsed)) {
+                      setCustomEditorWidthPx(Math.min(Math.max(parsed, 480), 3840));
+                    }
+                  }}
+                  className="w-full h-9 text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                />
+                <span className="text-sm text-text-muted">px</span>
+              </div>
+            </div>
+          )}
 
           {/* Interface Zoom */}
           <div className="flex items-center justify-between">

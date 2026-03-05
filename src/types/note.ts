@@ -19,7 +19,7 @@ export interface ThemeSettings {
 
 export type FontFamily = "system-sans" | "serif" | "monospace";
 export type TextDirection = "ltr" | "rtl";
-export type EditorWidth = "narrow" | "normal" | "wide" | "full";
+export type EditorWidth = "narrow" | "normal" | "wide" | "full" | "custom";
 
 export interface EditorFontSettings {
   baseFontFamily?: FontFamily;
@@ -36,6 +36,7 @@ export interface Settings {
   pinnedNoteIds?: string[];
   textDirection?: TextDirection;
   editorWidth?: EditorWidth;
+  customEditorWidthPx?: number;
   defaultNoteName?: string;
   interfaceZoom?: number;
 }
