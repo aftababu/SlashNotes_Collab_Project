@@ -1199,7 +1199,7 @@ fn update_settings(
 async fn write_file(path: String, contents: Vec<u8>) -> Result<(), String> {
     fs::write(&path, contents)
         .await
-        .map_err(|e| format!("Failed to write file: {}", e))
+        .map_err(|_| "Failed to write file".to_string())
 }
 
 #[tauri::command]
@@ -1255,10 +1255,10 @@ async fn read_file_direct(path: String) -> Result<FileContent, String> {
 
     let content = fs::read_to_string(&canonical)
         .await
-        .map_err(|e| format!("Failed to read file: {}", e))?;
+        .map_err(|_| "Failed to read file".to_string())?;
     let metadata = fs::metadata(&canonical)
         .await
-        .map_err(|e| format!("Failed to read metadata: {}", e))?;
+        .map_err(|_| "Failed to read metadata".to_string())?;
 
     let modified = metadata
         .modified()
@@ -1288,11 +1288,11 @@ async fn save_file_direct(path: String, content: String) -> Result<FileContent, 
 
     fs::write(&canonical, &content)
         .await
-        .map_err(|e| format!("Failed to write file: {}", e))?;
+        .map_err(|_| "Failed to write file".to_string())?;
 
     let metadata = fs::metadata(&canonical)
         .await
-        .map_err(|e| format!("Failed to read metadata: {}", e))?;
+        .map_err(|_| "Failed to read metadata".to_string())?;
     let modified = metadata
         .modified()
         .ok()
@@ -1333,7 +1333,7 @@ async fn import_file_to_folder(
     // Read the source file content
     let content = fs::read_to_string(&source)
         .await
-        .map_err(|e| format!("Failed to read source file: {}", e))?;
+        .map_err(|_| "Failed to read source file".to_string())?;
 
     // Derive the note ID from the title (H1 heading), falling back to filename
     let extracted_title = extract_title(&content);
@@ -1360,10 +1360,10 @@ async fn import_file_to_folder(
             .await
         {
             Ok(mut file) => {
-                if let Err(e) = file.write_all(content.as_bytes()).await {
+                if file.write_all(content.as_bytes()).await.is_err() {
                     // Clean up the empty file on write failure
                     let _ = fs::remove_file(&candidate).await;
-                    return Err(format!("Failed to write file: {}", e));
+                    return Err("Failed to write file".to_string());
                 }
                 break;
             }
@@ -1371,7 +1371,7 @@ async fn import_file_to_folder(
                 final_id = format!("{}-{}", base_id, counter);
                 counter += 1;
             }
-            Err(e) => return Err(format!("Failed to create file: {}", e)),
+            Err(_) => return Err("Failed to create file".to_string()),
         }
     };
 
@@ -1693,7 +1693,7 @@ async fn save_clipboard_image(
     // Decode base64
     let image_data = base64::engine::general_purpose::STANDARD
         .decode(&base64_data)
-        .map_err(|e| format!("Failed to decode base64: {}", e))?;
+        .map_err(|_| "Failed to decode base64 image data".to_string())?;
 
     // Guard against zero-byte files
     if image_data.is_empty() {
@@ -1725,7 +1725,7 @@ async fn save_clipboard_image(
     // Write the file
     fs::write(&target_path, &image_data)
         .await
-        .map_err(|e| format!("Failed to write image: {}", e))?;
+        .map_err(|_| "Failed to write image".to_string())?;
 
     // Return relative path
     Ok(format!("assets/{}", target_name))
@@ -1754,6 +1754,14 @@ async fn copy_image_to_assets(
         .extension()
         .and_then(|e| e.to_str())
         .ok_or("Invalid file extension")?;
+
+    const ALLOWED_IMAGE_EXTENSIONS: &[&str] = &[
+        "jpg", "jpeg", "png", "gif", "webp", "svg", "bmp", "tiff", "tif", "ico", "avif",
+    ];
+    let ext_lower = extension.to_lowercase();
+    if !ALLOWED_IMAGE_EXTENSIONS.contains(&ext_lower.as_str()) {
+        return Err("Only image files can be copied to assets".to_string());
+    }
 
     // Get original filename (without extension)
     let original_name = source
@@ -1784,7 +1792,7 @@ async fn copy_image_to_assets(
     // Copy the file
     fs::copy(&source, &target_path)
         .await
-        .map_err(|e| format!("Failed to copy image: {}", e))?;
+        .map_err(|_| "Failed to copy image".to_string())?;
 
     // Return both relative path and filename for frontend to construct the URL
     Ok(format!("assets/{}", target_name))
@@ -2068,7 +2076,19 @@ async fn git_push_with_upstream(state: State<'_, AppState>) -> Result<git::GitRe
                 // Get current branch first
                 let status = git::get_status(&PathBuf::from(&path));
                 match status.current_branch {
-                    Some(branch) => git::push_with_upstream(&PathBuf::from(&path), &branch),
+                    Some(branch) => {
+                        if !branch
+                            .chars()
+                            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '/' | '-' | '_' | '.'))
+                        {
+                            return git::GitResult {
+                                success: false,
+                                message: None,
+                                error: Some("Invalid branch name".to_string()),
+                            };
+                        }
+                        git::push_with_upstream(&PathBuf::from(&path), &branch)
+                    }
                     None => git::GitResult {
                         success: false,
                         message: None,
@@ -2367,12 +2387,35 @@ async fn execute_ai_cli(
 }
 
 #[tauri::command]
-async fn ai_execute_claude(file_path: String, prompt: String) -> Result<AiExecutionResult, String> {
+async fn ai_execute_claude(
+    file_path: String,
+    prompt: String,
+    state: State<'_, AppState>,
+) -> Result<AiExecutionResult, String> {
+    let folder = {
+        let app_config = state.app_config.read().expect("app_config read lock");
+        app_config.notes_folder.clone().ok_or("Notes folder not set")?
+    };
+    let path = PathBuf::from(&file_path);
+    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+    if !ext.eq_ignore_ascii_case("md") && !ext.eq_ignore_ascii_case("markdown") {
+        return Err("AI editing is only supported for markdown files".to_string());
+    }
+    let canonical = path
+        .canonicalize()
+        .map_err(|_| "Invalid file path".to_string())?;
+    let notes_root = PathBuf::from(&folder)
+        .canonicalize()
+        .map_err(|_| "Invalid notes folder".to_string())?;
+    if !canonical.starts_with(&notes_root) {
+        return Err("File must be within notes folder".to_string());
+    }
+
     execute_ai_cli(
         "Claude",
         "claude".to_string(),
         vec![
-            file_path,
+            canonical.to_string_lossy().to_string(),
             "--dangerously-skip-permissions".to_string(),
             "--print".to_string(),
         ],
