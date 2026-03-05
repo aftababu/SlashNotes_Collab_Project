@@ -2446,6 +2446,7 @@ fn try_select_in_notes_folder(app: &AppHandle, path: &Path) -> bool {
 
     let _ = app.emit_to("main", "select-note", note_id);
     if let Some(main_window) = app.get_webview_window("main") {
+        let _ = main_window.show();
         let _ = main_window.set_focus();
     }
     true
@@ -2527,9 +2528,11 @@ fn open_file_preview(app: AppHandle, path: String) -> Result<(), String> {
     Ok(())
 }
 
-// Handle CLI arguments: open .md files in preview mode
-fn handle_cli_args(app: &AppHandle, args: &[String], cwd: &str) {
+// Handle CLI arguments: open .md files in preview mode.
+// Returns true if a standalone preview window was created (file outside notes folder).
+fn handle_cli_args(app: &AppHandle, args: &[String], cwd: &str) -> bool {
     let mut opened_file = false;
+    let mut opened_preview = false;
 
     for arg in args.iter().skip(1) {
         // Skip flags
@@ -2545,18 +2548,23 @@ fn handle_cli_args(app: &AppHandle, args: &[String], cwd: &str) {
 
         if is_markdown_extension(&path) && path.is_file() {
             opened_file = true;
-            if !try_select_in_notes_folder(app, &path) {
-                let _ = create_preview_window(app, &path.to_string_lossy());
+            if !try_select_in_notes_folder(app, &path)
+                && create_preview_window(app, &path.to_string_lossy()).is_ok()
+            {
+                opened_preview = true;
             }
         }
     }
 
-    // If no files were opened, focus the main window
+    // If no files were opened, show and focus the main window
     if !opened_file {
         if let Some(main_window) = app.get_webview_window("main") {
+            let _ = main_window.show();
             let _ = main_window.set_focus();
         }
     }
+
+    opened_preview
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -2632,14 +2640,42 @@ pub fn run() {
                 let _ = app.asset_protocol_scope().allow_directory(folder, true);
             }
 
-            // Handle CLI args on first launch
+            // Handle CLI args on first launch; determine whether to show the main window.
+            // When a standalone preview is opened (file outside the notes folder) and the
+            // notes folder is already configured, the main window is closed so users only
+            // see the preview. When no notes folder is configured yet, the main window is
+            // always shown so new users can complete onboarding via the FolderPicker.
             let args: Vec<String> = std::env::args().collect();
-            if args.len() > 1 {
+            let opened_preview = if args.len() > 1 {
                 let cwd = std::env::current_dir()
                     .unwrap_or_default()
                     .to_string_lossy()
                     .into_owned();
-                handle_cli_args(app.handle(), &args, &cwd);
+                handle_cli_args(app.handle(), &args, &cwd)
+            } else {
+                false
+            };
+
+            if let Some(main_window) = app.get_webview_window("main") {
+                let has_notes_folder = app
+                    .state::<AppState>()
+                    .app_config
+                    .read()
+                    .expect("app_config read lock")
+                    .notes_folder
+                    .is_some();
+
+                if opened_preview && has_notes_folder {
+                    // Existing user: notes folder is configured and a standalone preview
+                    // was opened. Close the hidden main window so only the preview is visible.
+                    let _ = main_window.hide();
+                } else {
+                    // Show the main window when:
+                    // - No standalone preview was opened (normal launch), OR
+                    // - No notes folder is configured yet (new user needs FolderPicker
+                    //   for onboarding, even if a preview is also showing).
+                    let _ = main_window.show();
+                }
             }
 
             Ok(())
