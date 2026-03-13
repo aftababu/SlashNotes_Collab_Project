@@ -1,13 +1,15 @@
 import { useState, useRef, useEffect, type KeyboardEvent } from "react";
-import { SpinnerIcon, ClaudeIcon, CodexIcon } from "../icons";
+import { invoke } from "@tauri-apps/api/core";
+import { SpinnerIcon, ClaudeIcon, CodexIcon, OllamaIcon } from "../icons";
 import * as aiService from "../../services/ai";
 import type { AiProvider } from "../../services/ai";
+import type { Settings } from "../../types/note";
 
 interface AiEditModalProps {
   open: boolean;
   provider: AiProvider;
   onBack: () => void; // Go back to command palette
-  onExecute: (prompt: string) => Promise<void>;
+  onExecute: (prompt: string, ollamaModel?: string) => Promise<void>;
   isExecuting: boolean;
 }
 
@@ -20,29 +22,53 @@ export function AiEditModal({
 }: AiEditModalProps) {
   const [prompt, setPrompt] = useState("");
   const [cliInstalled, setCliInstalled] = useState<boolean | null>(null);
+  const [ollamaModel, setOllamaModel] = useState<string>(
+    "qwen3:8b",
+  );
   const inputRef = useRef<HTMLInputElement>(null);
-  const isCodex = provider === "codex";
-  const ProviderIcon = isCodex ? CodexIcon : ClaudeIcon;
-  const providerName = isCodex ? "Codex" : "Claude";
-  const cliName = isCodex ? "OpenAI Codex CLI" : "Claude Code CLI";
-  const installUrl = isCodex
-    ? "https://github.com/openai/codex"
-    : "https://code.claude.com/docs/en/quickstart";
+  const modelInputRef = useRef<HTMLInputElement>(null);
+  const ProviderIcon =
+    provider === "codex"
+      ? CodexIcon
+      : provider === "ollama"
+        ? OllamaIcon
+        : ClaudeIcon;
+  const providerName =
+    provider === "codex"
+      ? "Codex"
+      : provider === "ollama"
+        ? "Ollama"
+        : "Claude";
+  const cliName =
+    provider === "codex"
+      ? "OpenAI Codex CLI"
+      : provider === "ollama"
+        ? "Ollama CLI"
+        : "Claude Code CLI";
+  const installUrl =
+    provider === "codex"
+      ? "https://github.com/openai/codex"
+      : provider === "ollama"
+        ? "https://ollama.com"
+        : "https://code.claude.com/docs/en/quickstart";
 
-  // Focus input when opened
+  // Focus input when opened or when execution finishes
   useEffect(() => {
-    if (open && inputRef.current && cliInstalled) {
+    if (open && inputRef.current && cliInstalled && !isExecuting) {
       inputRef.current.focus();
     }
-  }, [open, cliInstalled]);
+  }, [open, cliInstalled, isExecuting]);
 
   // Check for provider CLI when modal opens
   useEffect(() => {
     if (!open) return;
     let active = true;
-    const checkCli = isCodex
-      ? aiService.checkCodexCli
-      : aiService.checkClaudeCli;
+    const checkCli =
+      provider === "codex"
+        ? aiService.checkCodexCli
+        : provider === "ollama"
+          ? aiService.checkOllamaCli
+          : aiService.checkClaudeCli;
 
     checkCli()
       .then((result) => {
@@ -55,7 +81,17 @@ export function AiEditModal({
     return () => {
       active = false;
     };
-  }, [open, isCodex, cliName]);
+  }, [open, provider, cliName]);
+
+  // Load Ollama model from settings when modal opens
+  useEffect(() => {
+    if (!open || provider !== "ollama") return;
+    invoke<Settings>("get_settings")
+      .then((settings) =>
+        setOllamaModel(settings.ollamaModel || "qwen3:8b"),
+      )
+      .catch(() => {});
+  }, [open, provider]);
 
   // Clear prompt when modal closes
   useEffect(() => {
@@ -82,7 +118,22 @@ export function AiEditModal({
 
   const handleExecute = async () => {
     if (!prompt.trim() || isExecuting || !cliInstalled) return;
-    await onExecute(prompt);
+
+    // Save the model to settings in the background for next time
+    if (provider === "ollama" && ollamaModel.trim()) {
+      invoke<Settings>("get_settings")
+        .then((settings) =>
+          invoke("update_settings", {
+            newSettings: { ...settings, ollamaModel: ollamaModel.trim() },
+          }),
+        )
+        .catch(() => {});
+    }
+
+    await onExecute(
+      prompt,
+      provider === "ollama" ? ollamaModel.trim() : undefined,
+    );
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
@@ -122,7 +173,7 @@ export function AiEditModal({
               className="flex-1 text-[17px] bg-transparent outline-none text-text placeholder-text-muted/50 disabled:opacity-50"
             />
             {isExecuting && (
-              <SpinnerIcon className="w-5 h-5 animate-spin text-text-muted flex-shrink-0" />
+              <SpinnerIcon className="w-5 h-5 animate-spin text-text-muted shrink-0" />
             )}
           </div>
         </div>
@@ -169,6 +220,28 @@ export function AiEditModal({
             </div>
           ) : (
             <>
+              {provider === "ollama" && (
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2 text-sm">
+                    <span className="text-text-muted shrink-0">
+                      Ollama model:
+                    </span>
+                    <input
+                      ref={modelInputRef}
+                      type="text"
+                      value={ollamaModel}
+                      onChange={(e) => setOllamaModel(e.target.value)}
+                      onKeyDown={handleKeyDown}
+                      placeholder="qwen3:8b"
+                      autoComplete="off"
+                      autoCorrect="off"
+                      autoCapitalize="off"
+                      spellCheck={false}
+                      className="flex-1 text-sm bg-bg-muted rounded-md px-2.5 py-1.5 outline-none text-text placeholder-text-muted/50 border border-border focus:border-text-muted transition-colors"
+                    />
+                  </div>
+                </div>
+              )}
               <div className="text-sm space-y-1 p-3 bg-bg-muted rounded-md">
                 <span className="font-medium text-text">How does it work?</span>{" "}
                 <span className="text-text-muted">
@@ -176,6 +249,7 @@ export function AiEditModal({
                   local {cliName}. You'll be able to undo changes.
                 </span>
               </div>
+
               <div className="w-full flex justify-between">
                 <div className="flex items-center gap-1.5 text-sm text-text-muted">
                   <kbd className="text-xs px-1.5 py-0.5 rounded-md bg-bg-muted text-text-muted">

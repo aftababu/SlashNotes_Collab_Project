@@ -107,6 +107,8 @@ pub struct Settings {
     pub interface_zoom: Option<f32>,
     #[serde(rename = "customEditorWidthPx")]
     pub custom_editor_width_px: Option<u32>,
+    #[serde(rename = "ollamaModel")]
+    pub ollama_model: Option<String>,
 }
 
 // Search result
@@ -2466,6 +2468,140 @@ async fn ai_execute_codex(file_path: String, prompt: String) -> Result<AiExecuti
     .await
 }
 
+#[tauri::command]
+async fn ai_check_ollama_cli() -> Result<bool, String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        let path = get_expanded_path();
+        check_cli_exists("ollama", &path)
+    })
+    .await
+    .map_err(|e| format!("Failed to check Ollama CLI: {}", e))?
+}
+
+#[tauri::command]
+async fn ai_execute_ollama(
+    file_path: String,
+    prompt: String,
+    model: String,
+    state: State<'_, AppState>,
+) -> Result<AiExecutionResult, String> {
+    let folder = {
+        let app_config = state.app_config.read().expect("app_config read lock");
+        app_config.notes_folder.clone().ok_or("Notes folder not set")?
+    };
+    let path = PathBuf::from(&file_path);
+    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+    if !ext.eq_ignore_ascii_case("md") && !ext.eq_ignore_ascii_case("markdown") {
+        return Err("AI editing is only supported for markdown files".to_string());
+    }
+    let canonical = path
+        .canonicalize()
+        .map_err(|_| "Invalid file path".to_string())?;
+    let notes_root = PathBuf::from(&folder)
+        .canonicalize()
+        .map_err(|_| "Invalid notes folder".to_string())?;
+    if !canonical.starts_with(&notes_root) {
+        return Err("File must be within notes folder".to_string());
+    }
+
+    // Read the current file content
+    let file_content = tokio::fs::read_to_string(&canonical)
+        .await
+        .map_err(|e| format!("Failed to read file: {}", e))?;
+
+    let stdin_input = format!(
+        "You are a markdown editor. Edit the markdown content below according to the user's instructions.\n\
+         Return ONLY the complete edited markdown content.\n\
+         Do NOT include any explanation, commentary, or code fences around the output.\n\
+         Do NOT add ```markdown or ``` wrappers.\n\n\
+         Current markdown content:\n{file_content}\n\n\
+         User instructions:\n{prompt}"
+    );
+
+    // Use the model provided (frontend reads from settings, defaults to "qwen3:8b")
+    let trimmed = model.trim();
+    let model_name = if trimmed.is_empty() {
+        "qwen3:8b".to_string()
+    } else {
+        trimmed.to_string()
+    };
+
+    // Check if the model is available locally before running (skip for cloud models)
+    if !model_name.contains("cloud") {
+        let mn = model_name.clone();
+        let available = tauri::async_runtime::spawn_blocking(move || {
+            let path = get_expanded_path();
+            let mut cmd = no_window_cmd("ollama");
+            cmd.env("PATH", &path);
+            cmd.args(["show", &mn]);
+            cmd.stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null());
+            match cmd.status() {
+                Ok(status) => status.success(),
+                Err(_) => false,
+            }
+        })
+        .await
+        .unwrap_or(false);
+
+        if !available {
+            return Ok(AiExecutionResult {
+                success: false,
+                output: String::new(),
+                error: Some(format!(
+                    "Model '{}' is not installed. Run: ollama pull {}",
+                    model_name, model_name
+                )),
+            });
+        }
+    }
+
+    let result = execute_ai_cli(
+        "Ollama",
+        "ollama".to_string(),
+        vec!["run".to_string(), model_name],
+        stdin_input,
+        "Ollama CLI not found. Please install it from https://ollama.com".to_string(),
+    )
+    .await?;
+
+    // Improve error messages for common Ollama failures
+    if !result.success {
+        if let Some(ref err) = result.error {
+            if err.contains("401") || err.contains("Unauthorized") {
+                return Ok(AiExecutionResult {
+                    success: false,
+                    output: String::new(),
+                    error: Some("Authentication required. Run `ollama login` in your terminal to sign in.".to_string()),
+                });
+            }
+        }
+    }
+
+    // If successful, write the output back to the file
+    if result.success {
+        let edited_content = result.output.trim().to_string();
+        if edited_content.is_empty() {
+            return Ok(AiExecutionResult {
+                success: false,
+                output: String::new(),
+                error: Some("Ollama returned empty output. Please try again.".to_string()),
+            });
+        }
+        tokio::fs::write(&canonical, edited_content.as_bytes())
+            .await
+            .map_err(|e| format!("Failed to write edited file: {}", e))?;
+
+        Ok(AiExecutionResult {
+            success: true,
+            output: "Note edited successfully with Ollama.".to_string(),
+            error: None,
+        })
+    } else {
+        Ok(result)
+    }
+}
+
 /// Check if a markdown file is inside the configured notes folder.
 /// If so, emit a "select-note" event to the main window and focus it, returning true.
 /// Returns false on any failure so callers can fall back to create_preview_window.
@@ -2785,8 +2921,10 @@ pub fn run() {
             git_push_with_upstream,
             ai_check_claude_cli,
             ai_check_codex_cli,
+            ai_check_ollama_cli,
             ai_execute_claude,
             ai_execute_codex,
+            ai_execute_ollama,
             read_file_direct,
             save_file_direct,
             import_file_to_folder,

@@ -10,7 +10,12 @@ import type { Editor as TiptapEditor } from "@tiptap/react";
 import { FolderPicker } from "./components/layout/FolderPicker";
 import { CommandPalette } from "./components/command-palette/CommandPalette";
 import { SettingsPage } from "./components/settings";
-import { SpinnerIcon, ClaudeIcon, CodexIcon } from "./components/icons";
+import {
+  SpinnerIcon,
+  ClaudeIcon,
+  CodexIcon,
+  OllamaIcon,
+} from "./components/icons";
 import { AiEditModal } from "./components/ai/AiEditModal";
 import { AiResponseToast } from "./components/ai/AiResponseToast";
 import { PreviewApp } from "./components/preview/PreviewApp";
@@ -95,7 +100,7 @@ function AppContent() {
 
   // AI Edit handler
   const handleAiEdit = useCallback(
-    async (prompt: string) => {
+    async (prompt: string, ollamaModel?: string) => {
       if (!currentNote) {
         toast.error("No note selected");
         return;
@@ -104,10 +109,18 @@ function AppContent() {
       setAiEditing(true);
 
       try {
-        const result =
-          aiProvider === "codex"
-            ? await aiService.executeCodexEdit(currentNote.path, prompt)
-            : await aiService.executeClaudeEdit(currentNote.path, prompt);
+        let result: aiService.AiExecutionResult;
+        if (aiProvider === "codex") {
+          result = await aiService.executeCodexEdit(currentNote.path, prompt);
+        } else if (aiProvider === "ollama") {
+          result = await aiService.executeOllamaEdit(
+            currentNote.path,
+            prompt,
+            ollamaModel || "qwen3:8b",
+          );
+        } else {
+          result = await aiService.executeClaudeEdit(currentNote.path, prompt);
+        }
 
         // Reload the current note from disk
         await reloadCurrentNote();
@@ -425,13 +438,17 @@ function AppContent() {
           <div className="flex items-center gap-2">
             {aiProvider === "codex" ? (
               <CodexIcon className="w-4.5 h-4.5 fill-text-muted animate-spin-slow" />
+            ) : aiProvider === "ollama" ? (
+              <OllamaIcon className="w-4.5 h-4.5 fill-text-muted animate-bounce-gentle" />
             ) : (
               <ClaudeIcon className="w-4.5 h-4.5 fill-text-muted animate-spin-slow" />
             )}
             <div className="text-sm font-medium text-text">
               {aiProvider === "codex"
                 ? "Codex is editing your note..."
-                : "Claude is editing your note..."}
+                : aiProvider === "ollama"
+                  ? "Ollama is editing your note..."
+                  : "Claude is editing your note..."}
             </div>
           </div>
         </div>
