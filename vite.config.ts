@@ -59,7 +59,10 @@ export default defineConfig(async () => ({
             "@tiptap/extension-table-row",
             "@tiptap/extension-table-cell",
             "@tiptap/extension-table-header",
+            "@tiptap/extension-code-block-lowlight",
           ],
+          // Syntax highlighting
+          "highlight": ["lowlight", "highlight.js"],
           // React core
           "react-vendor": ["react", "react-dom"],
           // Tauri APIs
@@ -86,6 +89,7 @@ export default defineConfig(async () => ({
       "@tiptap/react",
       "@tiptap/starter-kit",
       "@tiptap/markdown",
+      "lowlight",
     ],
   },
 }));

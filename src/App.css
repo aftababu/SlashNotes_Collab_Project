@@ -34,6 +34,20 @@
   --editor-h4-size: 20px;
   --editor-h5-size: 16px;
   --editor-h6-size: 16px;
+
+  /* Syntax highlighting colors - Light (GitHub) */
+  --color-syntax-keyword: #d73a49;
+  --color-syntax-string: #032f62;
+  --color-syntax-number: #005cc5;
+  --color-syntax-comment: #6a737d;
+  --color-syntax-function: #6f42c1;
+  --color-syntax-variable: #e36209;
+  --color-syntax-type: #22863a;
+  --color-syntax-operator: #d73a49;
+  --color-syntax-attr: #005cc5;
+
+  /* Inline code color */
+  --color-code: #d73a49;
 }
 
 /* Theme color tokens - Dark mode */
@@ -49,6 +63,20 @@
   --color-border-solid: #57534e; /* stone-600 - for table borders */
   --color-accent: #fafaf9;
   --color-selection: rgba(253, 224, 71, 0.35); /* Tailwind yellow-300 */
+
+  /* Syntax highlighting colors - Dark (GitHub) */
+  --color-syntax-keyword: #ea4a5a;
+  --color-syntax-string: #79b8ff;
+  --color-syntax-number: #79b8ff;
+  --color-syntax-comment: #959da5;
+  --color-syntax-function: #b392f0;
+  --color-syntax-variable: #fb8532;
+  --color-syntax-type: #7bcc72;
+  --color-syntax-operator: #ea4a5a;
+  --color-syntax-attr: #79b8ff;
+
+  /* Inline code color */
+  --color-code: #ea4a5a;
 }
 
 /* Register theme colors with Tailwind */
@@ -340,9 +368,9 @@ html.dark {
 
 /* Code blocks and inline code */
 .prose :where(code):not(:where([class~="not-prose"], [class~="not-prose"] *)) {
-  color: var(--color-text);
+  color: var(--color-code);
   background-color: var(--color-bg-muted);
-  padding: 0.2em 0.4em;
+  padding: 0.15em 0.3em;
   border-radius: 0.25rem;
   font-size: 0.875em;
   font-weight: 500;
@@ -360,8 +388,139 @@ html.dark {
   content: "";
 }
 
-/* Code blocks (pre > code) */
-.prose :where(pre):not(:where([class~="not-prose"], [class~="not-prose"] *)) {
+/* Code blocks via NodeView wrapper */
+.code-block-wrapper {
+  position: relative;
+  margin: 1em 0;
+}
+
+.code-block-wrapper pre {
+  background-color: var(--color-bg-muted);
+  color: var(--color-text);
+  border-radius: 0.5rem;
+  padding: 2rem 1rem 0.75rem;
+  overflow-x: auto;
+}
+
+.code-block-wrapper pre code {
+  background-color: transparent;
+  color: var(--color-text);
+  padding: 0;
+  font-size: 0.933em;
+  font-weight: 400;
+}
+
+/* Language selector */
+.code-block-language-selector {
+  position: absolute;
+  top: 0.375rem;
+  right: 0.5rem;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  opacity: 0.5;
+  transition: opacity 0.15s;
+}
+
+.code-block-wrapper:hover .code-block-language-selector,
+.code-block-language-selector:focus-within {
+  opacity: 1;
+}
+
+/* Mermaid diagram */
+.mermaid-wrapper {
+  margin: 1em 0;
+  position: relative;
+}
+
+.mermaid-diagram svg {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Syntax highlighting tokens */
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-built_in {
+  color: var(--color-syntax-keyword);
+}
+
+.hljs-string,
+.hljs-doctag,
+.hljs-regexp {
+  color: var(--color-syntax-string);
+}
+
+.hljs-number,
+.hljs-literal {
+  color: var(--color-syntax-number);
+}
+
+.hljs-comment {
+  color: var(--color-syntax-comment);
+  font-style: italic;
+}
+
+.hljs-function,
+.hljs-title.function_ {
+  color: var(--color-syntax-function);
+}
+
+.hljs-variable,
+.hljs-template-variable,
+.hljs-tag {
+  color: var(--color-syntax-variable);
+}
+
+.hljs-type,
+.hljs-title.class_ {
+  color: var(--color-syntax-type);
+}
+
+.hljs-meta,
+.hljs-symbol {
+  color: var(--color-syntax-operator);
+}
+
+.hljs-attr,
+.hljs-attribute,
+.hljs-params {
+  color: var(--color-syntax-attr);
+}
+
+.hljs-section,
+.hljs-name {
+  color: var(--color-syntax-variable);
+}
+
+.hljs-deletion {
+  color: var(--color-syntax-variable);
+  background-color: rgba(224, 108, 117, 0.1);
+}
+
+.hljs-addition {
+  color: var(--color-syntax-string);
+  background-color: rgba(152, 195, 121, 0.1);
+}
+
+.hljs-emphasis {
+  font-style: italic;
+}
+
+.hljs-strong {
+  font-weight: var(--editor-bold-weight);
+}
+
+/* Fallback for code blocks not using NodeView (e.g. frontmatter pre) */
+.prose
+  :where(pre):not(
+    :where(
+      .code-block-wrapper pre,
+      [class~="not-prose"],
+      [class~="not-prose"] *
+    )
+  ) {
   background-color: var(--color-bg-muted);
   color: var(--color-text);
   border-radius: 0.5rem;
@@ -370,7 +529,13 @@ html.dark {
 }
 
 .prose
-  :where(pre code):not(:where([class~="not-prose"], [class~="not-prose"] *)) {
+  :where(pre code):not(
+    :where(
+      .code-block-wrapper pre code,
+      [class~="not-prose"],
+      [class~="not-prose"] *
+    )
+  ) {
   background-color: transparent;
   padding: 0;
   font-size: 0.933em;
@@ -947,6 +1112,24 @@ table.not-prose th {
   ol,
   table {
     page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  /* Preserve code block background for printing */
+  .code-block-wrapper pre {
+    background: #f5f5f5 !important;
+    color: black !important;
+  }
+
+  /* Hide language selector in print */
+  .code-block-language-selector,
+  .code-block-mermaid-btn {
+    display: none !important;
+  }
+
+  /* Mermaid diagrams: avoid page breaks */
+  .mermaid-diagram svg {
+    max-width: 100% !important;
     break-inside: avoid;
   }
 

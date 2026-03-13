@@ -21,6 +21,7 @@ import {
   ImageIcon,
   TableIcon,
   BracketsIcon,
+  WorkflowIcon,
 } from "../icons";
 import { SlashCommandList, type SlashCommandListRef } from "./SlashCommandList";
 
@@ -121,6 +122,15 @@ const SLASH_COMMANDS: SlashCommandItem[] = [
     aliases: ["code", "fenced", "pre"],
     command: (editor) => {
       editor.chain().focus().toggleCodeBlock().run();
+    },
+  },
+  {
+    title: "Mermaid Diagram",
+    description: "Mermaid diagram block",
+    icon: <WorkflowIcon />,
+    aliases: ["mermaid", "diagram", "flowchart", "chart"],
+    command: (editor) => {
+      editor.chain().focus().setCodeBlock({ language: "mermaid" }).run();
     },
   },
   {
