@@ -102,7 +102,7 @@ Many more shortcuts and features are available in the app—explore via the comm
 
 ## Contributing
 
-Contributions and suggestions are welcome.
+Contributions and suggestions are welcome. Scratch is actively maintained but the release cycle is at the whim of my schedule – sometimes I'll review and merge same-day, sometimes it may take several weeks.
 
 What makes Scratch special is its minimal feature set and focus on user experience. We're not trying to build Obsidian or Notion, so not every feature will be a fit.
 
