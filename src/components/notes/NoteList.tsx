@@ -83,11 +83,18 @@ const NoteItem = memo(function NoteItem({
   onSelect,
   onContextMenu,
 }: NoteItemProps) {
+  const ref = useRef<HTMLDivElement>(null);
   const handleClick = useCallback(() => onSelect(id), [onSelect, id]);
   const handleContextMenu = useCallback(
     (e: React.MouseEvent) => onContextMenu(e, id),
     [onContextMenu, id]
   );
+
+  useEffect(() => {
+    if (isSelected) {
+      ref.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }
+  }, [isSelected]);
 
   const folder = id.includes('/') ? id.substring(0, id.lastIndexOf('/')) : null;
   const displayPreview = folder
@@ -95,15 +102,17 @@ const NoteItem = memo(function NoteItem({
     : preview;
 
   return (
-    <ListItem
-      title={cleanTitle(title)}
-      subtitle={displayPreview}
-      meta={formatDate(modified)}
-      isSelected={isSelected}
-      isPinned={isPinned}
-      onClick={handleClick}
-      onContextMenu={handleContextMenu}
-    />
+    <div ref={ref}>
+      <ListItem
+        title={cleanTitle(title)}
+        subtitle={displayPreview}
+        meta={formatDate(modified)}
+        isSelected={isSelected}
+        isPinned={isPinned}
+        onClick={handleClick}
+        onContextMenu={handleContextMenu}
+      />
+    </div>
   );
 });
 
