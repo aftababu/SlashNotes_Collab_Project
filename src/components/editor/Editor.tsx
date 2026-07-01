@@ -107,6 +107,30 @@ function formatDateTime(timestamp: number): string {
   });
 }
 
+function focusAndSelectTitle(editor: TiptapEditor): boolean {
+  let titleFrom = -1;
+  let titleTo = -1;
+
+  editor.state.doc.descendants((node, pos) => {
+    if (node.type.name !== "heading" || node.attrs.level !== 1) {
+      return true;
+    }
+    titleFrom = pos + 1;
+    titleTo = pos + node.nodeSize - 1;
+    return false;
+  });
+
+  if (titleFrom < 0 || titleTo < 0) return false;
+
+  editor
+    .chain()
+    .focus()
+    .setTextSelection(titleFrom === titleTo ? titleFrom : { from: titleFrom, to: titleTo })
+    .run();
+
+  return true;
+}
+
 // Standard number-field shortcuts for KaTeX (shared between inline and block math)
 const katexMacros: Record<string, string> = {
   "\\R": "\\mathbb{R}",
@@ -440,6 +464,7 @@ export function Editor({
     : notesCtx!.saveNote;
 
   const createNote = notesCtx?.createNote;
+  const consumePendingNewNote = notesCtx?.consumePendingNewNote;
   const hasExternalChanges = previewMode
     ? previewMode.hasExternalChanges
     : notesCtx!.hasExternalChanges;
@@ -1349,6 +1374,13 @@ export function Editor({
 
       isLoadingRef.current = false;
 
+      if (consumePendingNewNote?.(loadingNoteId)) {
+        if (!focusAndSelectTitle(editor)) {
+          editor.commands.focus("start");
+        }
+        return;
+      }
+
       // For brand new empty notes, focus and select all so user can start typing
       // Skip if the note list has focus (e.g. keyboard navigation with arrow keys)
       if ((isNewNote || wasEmpty) && currentNote.content.trim() === "") {
@@ -1360,7 +1392,13 @@ export function Editor({
       }
       // For existing notes, don't auto-focus - let user click where they want
     });
-  }, [currentNote, editor, flushPendingSave, reloadVersion]);
+  }, [
+    currentNote,
+    editor,
+    flushPendingSave,
+    reloadVersion,
+    consumePendingNewNote,
+  ]);
 
   // Scroll to top on mount (e.g., when returning from settings)
   useEffect(() => {

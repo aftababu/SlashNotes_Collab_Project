@@ -63,7 +63,6 @@ export function GeneralSettingsSection() {
   const [showRemoteInput, setShowRemoteInput] = useState(false);
   const [noteTemplate, setNoteTemplate] = useState<string>("Untitled");
   const [previewNoteName, setPreviewNoteName] = useState<string>("Untitled");
-
   // Load template from settings on mount
   useEffect(() => {
     const loadTemplate = async () => {
@@ -544,6 +543,7 @@ export function GeneralSettingsSection() {
               </p>
             </div>
           </details>
+
         </div>
       </section>
     </div>
