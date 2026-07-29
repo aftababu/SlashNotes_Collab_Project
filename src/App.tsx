@@ -14,6 +14,7 @@ import {
   SpinnerIcon,
   ClaudeIcon,
   CodexIcon,
+  OpenCodeIcon,
   OllamaIcon,
 } from "./components/icons";
 import { AiEditModal } from "./components/ai/AiEditModal";
@@ -115,6 +116,8 @@ function AppContent() {
         let result: aiService.AiExecutionResult;
         if (aiProvider === "codex") {
           result = await aiService.executeCodexEdit(currentNote.path, prompt);
+        } else if (aiProvider === "opencode") {
+          result = await aiService.executeOpenCodeEdit(currentNote.path, prompt);
         } else if (aiProvider === "ollama") {
           result = await aiService.executeOllamaEdit(
             currentNote.path,
@@ -480,6 +483,8 @@ function AppContent() {
           <div className="flex items-center gap-2">
             {aiProvider === "codex" ? (
               <CodexIcon className="w-4.5 h-4.5 fill-text-muted animate-spin-slow" />
+            ) : aiProvider === "opencode" ? (
+              <OpenCodeIcon className="w-4.5 h-4.5 fill-text-muted animate-pulse-gentle" />
             ) : aiProvider === "ollama" ? (
               <OllamaIcon className="w-4.5 h-4.5 fill-text-muted animate-bounce-gentle" />
             ) : (
@@ -488,6 +493,8 @@ function AppContent() {
             <div className="text-sm font-medium text-text">
               {aiProvider === "codex"
                 ? "Codex is editing your note..."
+                : aiProvider === "opencode"
+                  ? "OpenCode is editing your note..."
                 : aiProvider === "ollama"
                   ? "Ollama is editing your note..."
                   : "Claude is editing your note..."}

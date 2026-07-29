@@ -40,6 +40,13 @@ export async function checkOpenCodeCli(): Promise<boolean> {
   return invoke("ai_check_opencode_cli");
 }
 
+export async function executeOpenCodeEdit(
+  filePath: string,
+  prompt: string
+): Promise<AiExecutionResult> {
+  return invoke("ai_execute_opencode", { filePath, prompt });
+}
+
 export async function checkOllamaCli(): Promise<boolean> {
   return invoke("ai_check_ollama_cli");
 }
