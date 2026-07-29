@@ -972,6 +972,7 @@ export function Editor({
   }, [closeBlockMathPopup, handleEditBlockMath]);
 
   const editor = useEditor({
+    textDirection,
     extensions: [
       StarterKit.configure({
         heading: {
