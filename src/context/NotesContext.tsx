@@ -40,6 +40,7 @@ interface NotesActionsContextValue {
   refreshNotes: () => Promise<void>;
   reloadCurrentNote: () => Promise<void>;
   setNotesFolder: (path: string) => Promise<void>;
+  syncNotesFolder: (path: string) => Promise<void>;
   search: (query: string) => Promise<void>;
   clearSearch: () => void;
   pinNote: (id: string) => Promise<void>;
@@ -515,6 +516,23 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // Update local state only (backend already initialized the folder).
+  // Used when the CLI sets the notes folder and emits an event.
+  const syncNotesFolder = useCallback(async (path: string) => {
+    try {
+      setNotesFolderState(path);
+      setSelectedNoteId(null);
+      setCurrentNote(null);
+      const notesList = await notesService.listNotes();
+      setNotes(notesList);
+      await notesService.startFileWatcher();
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to sync notes folder"
+      );
+    }
+  }, []);
+
   const search = useCallback(async (query: string) => {
     const requestId = ++searchRequestIdRef.current;
     setSearchQuery(query);
@@ -704,6 +722,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
       refreshNotes,
       reloadCurrentNote,
       setNotesFolder,
+      syncNotesFolder,
       search,
       clearSearch,
       pinNote,
@@ -725,6 +744,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
       refreshNotes,
       reloadCurrentNote,
       setNotesFolder,
+      syncNotesFolder,
       search,
       clearSearch,
       pinNote,
