@@ -1226,3 +1226,24 @@ table.not-prose th {
     break-inside: avoid;
   }
 }
+
+/*
+ * Fix: Radix context menu auto-selects first item at zoom < 100%.
+ * At non-100% zoom, the pointerup from the right-click lands on the first
+ * menu item due to coordinate mismatch. Briefly disabling pointer-events
+ * ensures the stale pointerup is ignored.
+ */
+[data-radix-menu-content][data-state="open"] {
+  pointer-events: none;
+  animation: radixMenuEnablePointer 100ms linear forwards;
+}
+
+@keyframes radixMenuEnablePointer {
+  0%,
+  99% {
+    pointer-events: none;
+  }
+  100% {
+    pointer-events: auto;
+  }
+}
