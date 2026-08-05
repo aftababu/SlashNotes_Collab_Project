@@ -1,5 +1,5 @@
 import { useTheme } from "../../context/ThemeContext";
-import { Button, IconButton, Input, Select } from "../ui";
+import { Button, CodeCopyButton, IconButton, Input, Select } from "../ui";
 import type { FontFamily, TextDirection, EditorWidth } from "../../types/note";
 import { EyeIcon, MinusIcon, PlusIcon } from "../icons";
 
@@ -251,7 +251,9 @@ export function AppearanceSettingsSection() {
                   onChange={(e) => {
                     const parsed = parseInt(e.target.value, 10);
                     if (Number.isFinite(parsed)) {
-                      setCustomEditorWidthPx(Math.min(Math.max(parsed, 480), 3840));
+                      setCustomEditorWidthPx(
+                        Math.min(Math.max(parsed, 480), 3840),
+                      );
                     }
                   }}
                   className="w-full h-9 text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
@@ -346,9 +348,10 @@ export function AppearanceSettingsSection() {
                 immediately by Strategic Meowing.
               </p>
 
-              <pre>
-                <code>
-                  {`function acquireFood() {
+              <div className="relative my-1">
+                <div className="absolute top-2 right-2 z-10">
+                  <CodeCopyButton
+                    text={`function acquireFood() {
   while (bowl.isEmpty()) {
     meow();
     rubAgainstLegs();
@@ -357,8 +360,22 @@ export function AppearanceSettingsSection() {
     }
   }
 }`}
-                </code>
-              </pre>
+                  />
+                </div>
+                <pre className="pt-10">
+                  <code>
+                    {`function acquireFood() {
+  while (bowl.isEmpty()) {
+    meow();
+    rubAgainstLegs();
+    if (human.isInKitchen) {
+      stareIntently();
+    }
+  }
+}`}
+                  </code>
+                </pre>
+              </div>
 
               <h2>Common Mistakes to Avoid</h2>
               <ol>
