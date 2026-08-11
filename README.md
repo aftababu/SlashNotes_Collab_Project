@@ -108,3 +108,4 @@ What makes SlashNote special is its minimal feature set and focus on user experi
 ## License
 
 MIT
+# SlashNotes_Collab_Project
