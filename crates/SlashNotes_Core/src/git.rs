@@ -68,7 +68,7 @@ pub fn is_available() -> bool {
 /// This validates URL format, host reachability, TLS, repository existence,
 /// AND credentials in one shot. A wrong PAT will fail here instead of being
 /// incorrectly reported as "host reachable".
-pub fn check_connection(_repo_path: &str, token: &str, remote_url: &str) -> Result<String, String> {
+pub fn check_connection(repo_path: &str, token: &str, remote_url: &str) -> Result<String, String> {
     let remote = remote_url.trim();
     if remote.is_empty() {
         return Err("Remote URL is empty.".to_string());
@@ -79,10 +79,18 @@ pub fn check_connection(_repo_path: &str, token: &str, remote_url: &str) -> Resu
 
     configure_android_ssl();
 
-    // A temporary repository hosts an anonymous remote for the probe, matching
-    // `git ls-remote <url>` behavior without touching the user's actual vault.
-    let repo = git2::Repository::init(repo_path_for_probe(_repo_path)?)
-        .map_err(|e| format!("Failed to prepare remote probe: {}", e))?;
+    // Bound libgit2 object caches so probing doesn't balloon native RSS.
+    git2::opts::enable_caching(false);
+
+    // Prefer an existing vault repository for the anonymous-remote probe. The
+    // actual sync already uses `Repository::discover`, which succeeds on the
+    // user's vault and avoids libgit2's "path not owned by current user" safety
+    // check that `Repository::init` triggers on external storage.
+    let repo = match git2::Repository::discover(Path::new(repo_path)) {
+        Ok(repo) => repo,
+        Err(_) => git2::Repository::init(repo_path_for_probe(repo_path)?)
+            .map_err(|e| format!("Failed to prepare temporary probe repository: {}", e))?,
+    };
     let mut anon = repo
         .remote_anonymous(remote)
         .map_err(|e| format!("Failed to prepare remote probe: {}", e))?;
@@ -111,14 +119,13 @@ pub fn check_connection(_repo_path: &str, token: &str, remote_url: &str) -> Resu
     Ok("Connection successful. Remote repository is reachable and authenticated.".to_string())
 }
 
-/// Choose a temporary directory for the anonymous-remote probe.
-fn repo_path_for_probe(repo_path: &str) -> Result<std::path::PathBuf, String> {
-    if !repo_path.trim().is_empty() {
-        let p = Path::new(repo_path);
-        if p.exists() || p.parent().map(|x| x.exists()).unwrap_or(false) {
-            return Ok(p.to_path_buf());
-        }
-    }
+/// Choose a private temporary directory for the anonymous-remote probe.
+///
+/// The connection test must NOT touch the user's actual vault path. Using the
+/// vault triggers libgit2's "repository path is not owned by current user"
+/// safety check on shared/external storage, and it is unnecessary: the probe
+/// only needs a disposable repository to hold an anonymous remote.
+fn repo_path_for_probe(_repo_path: &str) -> Result<std::path::PathBuf, String> {
     std::env::temp_dir()
         .canonicalize()
         .map(|p| p.join("slashnote_git_probe"))
@@ -654,6 +661,9 @@ pub fn perform_sync(repo_path: &str, token: &str, remote_url: &str, branch: &str
 
     // Configure Android system CA certificate directory for HTTPS SSL handshakes.
     configure_android_ssl();
+
+    // Bound libgit2 object caches so a large sync doesn't balloon native RSS.
+    git2::opts::enable_caching(false);
 
     let mut opts = git2::RepositoryInitOptions::new();
     opts.mkpath(true);

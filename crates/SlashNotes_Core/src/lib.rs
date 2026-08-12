@@ -27,11 +27,37 @@ pub struct NoteHeader {
     pub title: String,
 }
 
+/// Compact numeric kind codes for markdown spans.
+///
+/// Using `u8` instead of `String` removes one heap allocation per span on both
+/// the Rust and Kotlin sides and shrinks the UniFFI buffer substantially.
+pub mod span_kind {
+    pub const H1: u8 = 1;
+    pub const H2: u8 = 2;
+    pub const H3: u8 = 3;
+    pub const H4: u8 = 4;
+    pub const H5: u8 = 5;
+    pub const H6: u8 = 6;
+    pub const ITALIC: u8 = 10;
+    pub const BOLD: u8 = 11;
+    pub const STRIKE: u8 = 12;
+    pub const INLINE_CODE: u8 = 20;
+    pub const CODE_BLOCK: u8 = 21;
+    pub const LINK: u8 = 30;
+    pub const WIKILINK: u8 = 31;
+    pub const INLINE_MATH: u8 = 40;
+    pub const BLOCK_MATH: u8 = 41;
+    pub const MERMAID: u8 = 50;
+    pub const BLOCKQUOTE: u8 = 60;
+    pub const TASK_CHECKED: u8 = 70;
+    pub const TASK_UNCHECKED: u8 = 71;
+}
+
 #[derive(uniffi::Record, Clone, Debug)]
 pub struct MarkdownSpan {
     pub start: u32,
     pub end: u32,
-    pub kind: String,
+    pub kind: u8,
 }
 
 #[uniffi::export]
@@ -144,7 +170,7 @@ pub fn preview_note_name(template: String) -> String {
 
 #[uniffi::export]
 pub fn parse_markdown_tokens(content: String) -> Vec<MarkdownSpan> {
-    let mut spans = Vec::new();
+    let mut spans = Vec::with_capacity(content.len() / 16);
     if content.is_empty() {
         return spans;
     }
@@ -160,37 +186,37 @@ pub fn parse_markdown_tokens(content: String) -> Vec<MarkdownSpan> {
     for (event, range) in iter {
         let kind = match event {
             Event::Start(Tag::Heading { level, .. }) => match level {
-                HeadingLevel::H1 => "H1",
-                HeadingLevel::H2 => "H2",
-                HeadingLevel::H3 => "H3",
-                HeadingLevel::H4 => "H4",
-                HeadingLevel::H5 => "H5",
-                HeadingLevel::H6 => "H6",
+                HeadingLevel::H1 => span_kind::H1,
+                HeadingLevel::H2 => span_kind::H2,
+                HeadingLevel::H3 => span_kind::H3,
+                HeadingLevel::H4 => span_kind::H4,
+                HeadingLevel::H5 => span_kind::H5,
+                HeadingLevel::H6 => span_kind::H6,
             },
-            Event::Start(Tag::Emphasis) => "ITALIC",
-            Event::Start(Tag::Strong) => "BOLD",
-            Event::Start(Tag::Strikethrough) => "STRIKE",
+            Event::Start(Tag::Emphasis) => span_kind::ITALIC,
+            Event::Start(Tag::Strong) => span_kind::BOLD,
+            Event::Start(Tag::Strikethrough) => span_kind::STRIKE,
             Event::Start(Tag::CodeBlock(ref info)) => {
                 match info {
                     pulldown_cmark::CodeBlockKind::Fenced(lang) => {
-                        if lang.to_lowercase().contains("mermaid") {
-                            "MERMAID"
+                        if lang.eq_ignore_ascii_case("mermaid") {
+                            span_kind::MERMAID
                         } else {
-                            "CODE_BLOCK"
+                            span_kind::CODE_BLOCK
                         }
                     }
-                    pulldown_cmark::CodeBlockKind::Indented => "CODE_BLOCK",
+                    pulldown_cmark::CodeBlockKind::Indented => span_kind::CODE_BLOCK,
                 }
             }
 
-            Event::Start(Tag::BlockQuote(_)) => "BLOCKQUOTE",
-            Event::Start(Tag::Link { .. }) => "LINK",
-            Event::Code(_) => "INLINE_CODE",
+            Event::Start(Tag::BlockQuote(_)) => span_kind::BLOCKQUOTE,
+            Event::Start(Tag::Link { .. }) => span_kind::LINK,
+            Event::Code(_) => span_kind::INLINE_CODE,
             Event::TaskListMarker(checked) => {
                 if checked {
-                    "TASK_CHECKED"
+                    span_kind::TASK_CHECKED
                 } else {
-                    "TASK_UNCHECKED"
+                    span_kind::TASK_UNCHECKED
                 }
             }
             _ => continue,
@@ -199,7 +225,7 @@ pub fn parse_markdown_tokens(content: String) -> Vec<MarkdownSpan> {
         spans.push(MarkdownSpan {
             start: range.start as u32,
             end: range.end as u32,
-            kind: kind.to_string(),
+            kind,
         });
     }
 
@@ -229,7 +255,7 @@ pub fn parse_markdown_tokens(content: String) -> Vec<MarkdownSpan> {
                 spans.push(MarkdownSpan {
                     start: start as u32,
                     end: end as u32,
-                    kind: "WIKILINK".to_string(),
+                    kind: span_kind::WIKILINK,
                 });
                 i = end;
                 continue;
@@ -253,7 +279,7 @@ pub fn parse_markdown_tokens(content: String) -> Vec<MarkdownSpan> {
                 spans.push(MarkdownSpan {
                     start: start as u32,
                     end: end as u32,
-                    kind: "BLOCK_MATH".to_string(),
+                    kind: span_kind::BLOCK_MATH,
                 });
                 i = end;
                 continue;
@@ -277,7 +303,7 @@ pub fn parse_markdown_tokens(content: String) -> Vec<MarkdownSpan> {
                 spans.push(MarkdownSpan {
                     start: start as u32,
                     end: end as u32,
-                    kind: "INLINE_MATH".to_string(),
+                    kind: span_kind::INLINE_MATH,
                 });
                 i = end;
                 continue;
@@ -295,7 +321,7 @@ pub fn list_notes(dir_path: String) -> Vec<NoteHeader> {
     vault::get_cached_note_headers(dir_path)
         .into_iter()
         .map(|h| NoteHeader {
-            id: h.id,
+            id: h.relative_path.clone(),
             title: h.title,
         })
         .collect()
@@ -306,14 +332,14 @@ pub fn search_notes(dir_path: String, query: String) -> Vec<NoteHeader> {
     let headers = vault::get_cached_note_headers(dir_path);
     if query.trim().is_empty() {
         return headers.into_iter()
-            .map(|h| NoteHeader { id: h.id, title: h.title })
+            .map(|h| NoteHeader { id: h.relative_path, title: h.title })
             .collect();
     }
     let clean_query = query.to_lowercase();
     headers
         .into_iter()
-        .filter(|h| h.title.to_lowercase().contains(&clean_query) || h.id.to_lowercase().contains(&clean_query))
-        .map(|h| NoteHeader { id: h.id, title: h.title })
+        .filter(|h| h.title.to_lowercase().contains(&clean_query) || h.relative_path.to_lowercase().contains(&clean_query))
+        .map(|h| NoteHeader { id: h.relative_path, title: h.title })
         .collect()
 }
 

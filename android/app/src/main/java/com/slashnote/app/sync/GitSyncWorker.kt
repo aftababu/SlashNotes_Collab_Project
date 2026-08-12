@@ -56,10 +56,13 @@ class GitSyncWorker(
         fun schedulePeriodicSync(context: Context) {
             val constraints = Constraints.Builder()
                 .setRequiredNetworkType(NetworkType.CONNECTED)
+                .setRequiresBatteryNotLow(true)
                 .build()
 
+            // Sync hourly instead of every 15 minutes. Frequent native libgit2
+            // syncs keep the process alive and spike resident memory.
             val periodicWorkRequest = PeriodicWorkRequestBuilder<GitSyncWorker>(
-                15, TimeUnit.MINUTES
+                1, TimeUnit.HOURS
             )
                 .setConstraints(constraints)
                 .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 1, TimeUnit.MINUTES)
@@ -67,7 +70,7 @@ class GitSyncWorker(
 
             WorkManager.getInstance(context).enqueueUniquePeriodicWork(
                 PERIODIC_WORK_NAME,
-                ExistingPeriodicWorkPolicy.KEEP,
+                ExistingPeriodicWorkPolicy.UPDATE,
                 periodicWorkRequest
             )
         }

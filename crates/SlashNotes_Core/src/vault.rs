@@ -19,7 +19,6 @@ pub struct FolderItem {
 /// Per-note metadata cached in memory so UI scrolling never hits the disk.
 #[derive(uniffi::Record, Debug, Clone, PartialEq, Eq)]
 pub struct CachedNoteHeader {
-    pub id: String,
     pub title: String,
     pub relative_path: String,
     pub last_modified_unix: i64,
@@ -75,7 +74,6 @@ fn scan_vault(root: &Path, dir: &Path, notes: &mut Vec<CachedNoteHeader>) {
                 .unwrap_or_else(|_| name.clone());
             let title = entry_path.file_stem().unwrap_or_default().to_string_lossy().to_string();
             notes.push(CachedNoteHeader {
-                id: rel_path.clone(),
                 title,
                 relative_path: rel_path,
                 last_modified_unix: last_modified_unix(&entry_path),
@@ -105,9 +103,24 @@ pub fn load_vault_index(root_path: String) -> Vec<CachedNoteHeader> {
     let index = build_index(&root_path);
     let headers = index.notes.clone();
     if let Ok(mut guard) = VAULT_INDEXES.write() {
-        guard.insert(root_path, index);
+        insert_with_eviction(&mut guard, root_path, index);
     }
     headers
+}
+
+/// Keep at most `MAX_VAULT_INDEXES` vaults cached to bound native memory.
+const MAX_VAULT_INDEXES: usize = 4;
+
+fn insert_with_eviction(cache: &mut HashMap<String, VaultIndex>, root_path: String, index: VaultIndex) {
+    if cache.len() >= MAX_VAULT_INDEXES && !cache.contains_key(&root_path) {
+        // Evict the oldest entry. HashMap has no guaranteed order, so simply
+        // remove an arbitrary non-matching key; vault switching is rare enough
+        // that this is sufficient to prevent unbounded growth.
+        if let Some(old) = cache.keys().next().map(|k| k.clone()) {
+            cache.remove(&old);
+        }
+    }
+    cache.insert(root_path, index);
 }
 
 /// Return the cached note headers for a vault, indexing it on first access.

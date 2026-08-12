@@ -558,9 +558,7 @@ fun SlashNoteApp(
                         val existingNote = allNotes.find { note ->
                             note.relativePath.equals(targetFileName, ignoreCase = true) ||
                             note.relativePath.equals(rawPath, ignoreCase = true) ||
-                            note.title.equals(rawPath, ignoreCase = true) ||
-                            note.id.equals(rawPath, ignoreCase = true) ||
-                            note.id.equals(targetFileName, ignoreCase = true)
+                            note.title.equals(rawPath, ignoreCase = true)
                         }
 
                         if (existingNote != null) {
@@ -923,19 +921,19 @@ fun NoteListScreen(
                     )
                 }
 
-                items(recentNotes, key = { it.id }, contentType = { "note" }) { note ->
-                    val isPinned = pinnedIds.contains(note.id)
+                items(recentNotes, key = { it.relativePath }, contentType = { "note" }) { note ->
+                    val isPinned = pinnedIds.contains(note.relativePath)
                     NoteCardItem(
                         note = note,
                         isPinned = isPinned,
-                        onClick = { onNoteSelected(note.id) },
-                        onTogglePin = { onTogglePin(note.id) },
-                        onDuplicate = { onDuplicate(note.id) },
-                        onCopyPath = { onCopyPath(note.id) },
+                        onClick = { onNoteSelected(note.relativePath) },
+                        onTogglePin = { onTogglePin(note.relativePath) },
+                        onDuplicate = { onDuplicate(note.relativePath) },
+                        onCopyPath = { onCopyPath(note.relativePath) },
                         onDelete = {
                             scope.launch {
                                 withContext(Dispatchers.IO) {
-                                    deleteNote(notesDir, note.id)
+                                    deleteNote(notesDir, note.relativePath)
                                 }
                                 refreshNotes()
                             }
@@ -1043,7 +1041,7 @@ fun NoteCardItem(
                         Spacer(modifier = Modifier.height(2.dp))
 
                         Text(
-                            text = "${note.id}  •  $formattedDate",
+                            text = "${note.relativePath}  •  $formattedDate",
                             fontSize = 11.sp,
                             color = Color(0xFFD3737C),
                             maxLines = 1,

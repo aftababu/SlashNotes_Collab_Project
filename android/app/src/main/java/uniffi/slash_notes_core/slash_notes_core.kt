@@ -1121,6 +1121,29 @@ object NoPointer
 /**
  * @suppress
  */
+public object FfiConverterUByte: FfiConverter<UByte, Byte> {
+    override fun lift(value: Byte): UByte {
+        return value.toUByte()
+    }
+
+    override fun read(buf: ByteBuffer): UByte {
+        return lift(buf.get())
+    }
+
+    override fun lower(value: UByte): Byte {
+        return value.toByte()
+    }
+
+    override fun allocationSize(value: UByte) = 1UL
+
+    override fun write(value: UByte, buf: ByteBuffer) {
+        buf.put(value.toByte())
+    }
+}
+
+/**
+ * @suppress
+ */
 public object FfiConverterUInt: FfiConverter<UInt, Int> {
     override fun lift(value: Int): UInt {
         return value.toUInt()
@@ -1250,7 +1273,6 @@ public object FfiConverterString: FfiConverter<String, RustBuffer.ByValue> {
  * Per-note metadata cached in memory so UI scrolling never hits the disk.
  */
 data class CachedNoteHeader (
-    var `id`: kotlin.String, 
     var `title`: kotlin.String, 
     var `relativePath`: kotlin.String, 
     var `lastModifiedUnix`: kotlin.Long
@@ -1267,20 +1289,17 @@ public object FfiConverterTypeCachedNoteHeader: FfiConverterRustBuffer<CachedNot
         return CachedNoteHeader(
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
-            FfiConverterString.read(buf),
             FfiConverterLong.read(buf),
         )
     }
 
     override fun allocationSize(value: CachedNoteHeader) = (
-            FfiConverterString.allocationSize(value.`id`) +
             FfiConverterString.allocationSize(value.`title`) +
             FfiConverterString.allocationSize(value.`relativePath`) +
             FfiConverterLong.allocationSize(value.`lastModifiedUnix`)
     )
 
     override fun write(value: CachedNoteHeader, buf: ByteBuffer) {
-            FfiConverterString.write(value.`id`, buf)
             FfiConverterString.write(value.`title`, buf)
             FfiConverterString.write(value.`relativePath`, buf)
             FfiConverterLong.write(value.`lastModifiedUnix`, buf)
@@ -1331,7 +1350,7 @@ public object FfiConverterTypeFolderItem: FfiConverterRustBuffer<FolderItem> {
 data class MarkdownSpan (
     var `start`: kotlin.UInt, 
     var `end`: kotlin.UInt, 
-    var `kind`: kotlin.String
+    var `kind`: kotlin.UByte
 ) {
     
     companion object
@@ -1345,20 +1364,20 @@ public object FfiConverterTypeMarkdownSpan: FfiConverterRustBuffer<MarkdownSpan>
         return MarkdownSpan(
             FfiConverterUInt.read(buf),
             FfiConverterUInt.read(buf),
-            FfiConverterString.read(buf),
+            FfiConverterUByte.read(buf),
         )
     }
 
     override fun allocationSize(value: MarkdownSpan) = (
             FfiConverterUInt.allocationSize(value.`start`) +
             FfiConverterUInt.allocationSize(value.`end`) +
-            FfiConverterString.allocationSize(value.`kind`)
+            FfiConverterUByte.allocationSize(value.`kind`)
     )
 
     override fun write(value: MarkdownSpan, buf: ByteBuffer) {
             FfiConverterUInt.write(value.`start`, buf)
             FfiConverterUInt.write(value.`end`, buf)
-            FfiConverterString.write(value.`kind`, buf)
+            FfiConverterUByte.write(value.`kind`, buf)
     }
 }
 

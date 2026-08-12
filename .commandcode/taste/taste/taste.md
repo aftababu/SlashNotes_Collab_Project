@@ -1,7 +1,7 @@
 # Taste
 - Prefers native-first architecture: zero WebViews, no Electron/web runtimes — native UI (Jetpack Compose) backed by a native core (Rust via UniFFI), justified by performance, memory, and privacy. Confidence: 0.9
 - Builds offline-first, privacy-first products: all notes, search indices, and config stored locally on device; no telemetry or forced cloud. Confidence: 0.8
-- Sets explicit performance/memory budgets (e.g., <45 MB RAM, 60fps scrolling, small APK/binary size) and treats them as hard acceptance criteria, not nice-to-haves; visible lag during navigation/typing is reported as a bug to fix, and "light + low RAM + low ROM" is a stated requirement. Confidence: 0.9
+- Sets explicit performance/memory budgets (e.g., ≤40 MB RAM max, 20–30 MB normal steady-state, 60fps scrolling, small APK/binary size) and treats them as hard acceptance criteria, not nice-to-haves; visible lag during navigation/typing is reported as a bug to fix, and "light + low RAM + low ROM" plus "ultra fast" are stated requirements. Confidence: 0.95
 - Values APK/binary size (ROM) as a first-class optimization target alongside RAM: a small download/install footprint is a selling point, so dependency weight and binary bloat are product-level concerns, not just developer convenience. Confidence: 0.75
 - Wants feature parity across platforms: mobile client must mirror desktop features (wikilinks, slash command menu, LaTeX block math, Mermaid rendering). Confidence: 0.85
 - Requires real markdown rendering for reading notes (headings, lists, tables, code blocks, math/LaTeX, wikilinks); a raw-markdown or plain-colored text view is not acceptable for reading notes properly. LaTeX math specifically is a hard requirement: inline `$...# Taste
@@ -16,3 +16,4 @@
 - Wants explicit, visible success/error status feedback for remote/connection operations surfaced in the UI (e.g., a "Test Connection" button that reports success or error in the Git & Sync settings tab) rather than silent background-only status. Confidence: 0.75
 - Requires remote/connection "Test" checks to perform a real authenticated round-trip (e.g., `ls-remote` with the PAT) rather than a superficial host-reachability probe; reporting "success" when a wrong token still reaches the host is a false positive that must be fixed. Confidence: 0.8
 - Wants git-based remote sync (push/pull) to GitHub/GitLab as a first-class feature, not just local-only storage. Confidence: 0.7
+- Treats false-negative errors (a status/connection check reporting failure when the underlying operation actually works) as defects to fix, just like false positives; surfaced status must reflect reality in both directions. Confidence: 0.7

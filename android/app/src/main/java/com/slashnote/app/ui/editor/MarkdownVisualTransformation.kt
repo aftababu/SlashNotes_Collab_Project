@@ -62,14 +62,27 @@ class MarkdownVisualTransformation(
     private val cache: MarkdownSpanCache
 ) : VisualTransformation {
 
+    private var lastHash: Long = Long.MIN_VALUE
+    private var lastDarkTheme: Boolean = !isDarkTheme
+    private var lastResult: TransformedText? = null
+
     override fun filter(text: AnnotatedString): TransformedText {
         val rawText = text.text
         if (rawText.isEmpty()) {
             return TransformedText(text, OffsetMapping.Identity)
         }
 
+        val hash = markdownHash(rawText)
+
+        // Reuse the previously built styled text when the content and theme
+        // haven't changed. This avoids copying the entire note into a fresh
+        // AnnotatedString on every recomposition.
+        if (hash == lastHash && isDarkTheme == lastDarkTheme && lastResult != null) {
+            return lastResult!!
+        }
+
         // Fast path: if the background parser hasn't caught up yet, render plain.
-        val spans = cache.get(markdownHash(rawText)) ?: return TransformedText(text, OffsetMapping.Identity)
+        val spans = cache.get(hash) ?: return TransformedText(text, OffsetMapping.Identity)
 
         val builder = AnnotatedString.Builder(rawText)
         val textLength = rawText.length
@@ -77,7 +90,6 @@ class MarkdownVisualTransformation(
         val codeHighlight = if (isDarkTheme) DarkCodeHighlight else LightCodeHighlight
         val codeBg = if (isDarkTheme) DarkCodeBg else LightCodeBg
         val linkColor = Color(0xFF3B82F6)
-
         val wikilinkColor = if (isDarkTheme) Color(0xFF2DD4BF) else Color(0xFF0D9488)
 
         for (span in spans) {
@@ -92,35 +104,38 @@ class MarkdownVisualTransformation(
             }
         }
 
-        return TransformedText(builder.toAnnotatedString(), OffsetMapping.Identity)
+        val result = TransformedText(builder.toAnnotatedString(), OffsetMapping.Identity)
+        lastHash = hash
+        lastDarkTheme = isDarkTheme
+        lastResult = result
+        return result
     }
 
     private fun matchSpanStyle(
-        kind: String,
+        kind: kotlin.UByte,
         codeHighlight: Color,
         codeBg: Color,
         linkColor: Color,
         wikilinkColor: Color
     ): SpanStyle? {
-        return when (kind) {
-            "H1" -> SpanStyle(fontSize = 24.sp, fontWeight = FontWeight.Bold)
-            "H2" -> SpanStyle(fontSize = 20.sp, fontWeight = FontWeight.Bold)
-            "H3" -> SpanStyle(fontSize = 18.sp, fontWeight = FontWeight.Bold)
-            "H4", "H5", "H6" -> SpanStyle(fontSize = 16.sp, fontWeight = FontWeight.Bold)
-            "BOLD" -> SpanStyle(fontWeight = FontWeight.Bold)
-            "ITALIC" -> SpanStyle(fontStyle = FontStyle.Italic)
-            "STRIKE" -> SpanStyle(textDecoration = TextDecoration.LineThrough)
-            "INLINE_CODE", "CODE_BLOCK" -> SpanStyle(
+        return when (kind.toInt()) {
+            1, 2 -> SpanStyle(fontSize = if (kind.toInt() == 1) 24.sp else 20.sp, fontWeight = FontWeight.Bold)
+            3 -> SpanStyle(fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            4, 5, 6 -> SpanStyle(fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            10 -> SpanStyle(fontStyle = FontStyle.Italic)
+            11 -> SpanStyle(fontWeight = FontWeight.Bold)
+            12 -> SpanStyle(textDecoration = TextDecoration.LineThrough)
+            20, 21 -> SpanStyle(
                 fontFamily = FontFamily.Monospace,
                 color = codeHighlight,
                 background = codeBg
             )
-            "LINK" -> SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline)
-            "WIKILINK" -> SpanStyle(color = wikilinkColor, fontWeight = FontWeight.Medium, textDecoration = TextDecoration.Underline)
-            "INLINE_MATH" -> SpanStyle(fontFamily = FontFamily.Monospace, color = Color(0xFFC084FC), background = Color(0x22C084FC))
-            "BLOCK_MATH" -> SpanStyle(fontFamily = FontFamily.Monospace, color = Color(0xFFC084FC), background = Color(0x33A855F7), fontWeight = FontWeight.SemiBold)
-            "MERMAID" -> SpanStyle(fontFamily = FontFamily.Monospace, color = Color(0xFF34D399), background = Color(0x3310B981), fontWeight = FontWeight.Bold)
-            "BLOCKQUOTE" -> SpanStyle(fontStyle = FontStyle.Italic)
+            30 -> SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline)
+            31 -> SpanStyle(color = wikilinkColor, fontWeight = FontWeight.Medium, textDecoration = TextDecoration.Underline)
+            40 -> SpanStyle(fontFamily = FontFamily.Monospace, color = Color(0xFFC084FC), background = Color(0x22C084FC))
+            41 -> SpanStyle(fontFamily = FontFamily.Monospace, color = Color(0xFFC084FC), background = Color(0x33A855F7), fontWeight = FontWeight.SemiBold)
+            50 -> SpanStyle(fontFamily = FontFamily.Monospace, color = Color(0xFF34D399), background = Color(0x3310B981), fontWeight = FontWeight.Bold)
+            60 -> SpanStyle(fontStyle = FontStyle.Italic)
             else -> null
         }
     }
