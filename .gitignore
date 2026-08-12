@@ -1,35 +1,41 @@
-# Logs
-logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
+# Rust & Cargo build outputs
+target/
+**/target/
+**/*.rs.bk
 
-node_modules
-dist
-dist-ssr
-*.local
-test.sh
-
-# Editor directories and files
-.vscode/*
-!.vscode/extensions.json
-.idea
-.DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
-
-# Rust / Tauri
+# Tauri desktop build outputs
 src-tauri/target/
-src-tauri/gen/
 
-# Build secrets
-.env.build
+# Node & Package Managers
+node_modules/
+.pnpm-store/
+.npm/
 
-# Release artifacts
-latest.json
+# Web frontend build outputs
+dist/
+out/
+.svelte-kit/
+.next/
+
+# Android build outputs & IDEs
+.gradle/
+build/
+**/build/
+.kotlin/
+*.apk
+*.aab
+
+# Binary logs & memory dumps
+*.hprof
+java_pid*
+*.log
+*.so
+*.dylib
+*.dll
+
+# OS & Editor metadata
+.DS_Store
+Thumbs.db
+.idea/
+*.iml
+.vscode/

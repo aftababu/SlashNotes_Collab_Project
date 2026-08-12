@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Shell(cargo:*)",
+      "Shell(grep:*)",
+      "Shell(make:*)",
+      "Shell(make bindings 2>&1 | tail -5 && grep -n \"fun \\`\\(loadVaultIndex\\|getCachedNoteHeaders\\)\\`\" android/app/src/main/java/uniffi/slash_notes_core/slash_notes_core.kt)",
+      "Shell(./gradlew:*)",
+      "Shell(strings:*)",
+      "Shell(cd /home/aftababu/Projects/Active/SlashNote && git diff --stat android/ 2>/dev/null; echo \"---untracked, so checking files directly---\"; grep -n \"produceState\" android/app/src/main/java/com/slashnote/app/MainActivity.kt; echo \"produceState refs: $?\")",
+      "Shell(cd /home/aftababu/Projects/Active/SlashNote && cat > /tmp/parse_bench.rs <<'EOF' fn main() {} EOF # Quick inline test via cargo test with timing on a big doc cat > crates/SlashNotes_Core/tests/bench_parse.rs <<'EOF' use slash_notes_core::parse_markdown_tokens; use std::time::Instant; #[test] fn bench_parse_large_doc() { // ~2000 lines of mixed markdown let mut content = String::new(); for i in 0..2000 { content.push_str(&format!(\"# Heading {}\\n\", i)); content.push_str(\"**bold** and *italic* with `code` and [[wikilink]] and $$x^2$$\\n\"); content.push_str(\"- item one\\n- item two\\n\"); content.push_str(\"| a | b |\\n|---|---|\\n| 1 | 2 |\\n\\n\"); } let start = Instant::now(); for _ in 0..10 { let spans = parse_markdown_tokens(content.clone()); assert!(!spans.is_empty()); } let elapsed = start.elapsed(); println!(\"10 parses of {} chars took {:?} ({:?} each)\", content.len(), elapsed, elapsed / 10); } EOF cargo test -p slash_notes_core --test bench_parse -- --nocapture 2>&1 | grep -E \"10 parses|test result\")",
+      "Shell(cd /home/aftababu/Projects/Active/SlashNote && rm -f crates/SlashNotes_Core/tests/bench_parse.rs && rmdir crates/SlashNotes_Core/tests 2>/dev/null; ls crates/SlashNotes_Core/)"
+    ],
+    "deny": [],
+    "defaultMode": "default"
+  }
+}

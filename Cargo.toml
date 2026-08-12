@@ -1,0 +1,14 @@
+
+[workspace]
+members = [ "crates/SlashNotes_Core",
+  "src-tauri"
+]
+resolver = "2"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = "symbols"
+panic = "abort"
+

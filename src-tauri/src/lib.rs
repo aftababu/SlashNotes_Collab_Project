@@ -16,7 +16,7 @@ use tauri_plugin_clipboard_manager::ClipboardExt;
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
 
-mod git;
+use slash_notes_core::git;
 
 // Note metadata for list display
 #[derive(Debug, Clone, Serialize, Deserialize)]
