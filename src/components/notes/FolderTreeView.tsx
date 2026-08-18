@@ -74,6 +74,7 @@ interface FileItemProps {
   onDuplicate: (id: string) => Promise<void>;
   onDelete: (id: string) => void;
   onMoveToParent?: (id: string, targetFolder: string) => void;
+  onRenameNote: (id: string, currentName: string) => void;
   focusedItemKey?: string | null;
 }
 
@@ -89,6 +90,7 @@ const FileItem = memo(function FileItem({
   onDuplicate,
   onDelete,
   onMoveToParent,
+  onRenameNote,
   focusedItemKey,
 }: FileItemProps) {
   const itemRef = useRef<HTMLDivElement>(null);
@@ -155,7 +157,7 @@ const FileItem = memo(function FileItem({
           }}
           {...attributes}
           {...listeners}
-          className={`flex items-center gap-1.5 py-1.5 cursor-pointer rounded-md select-none transition-colors ${
+          className={`flex items-center gap-1.5 py-[3px] cursor-pointer rounded-md select-none transition-colors ${
             isDragging
               ? "opacity-40"
               : isOver
@@ -198,6 +200,13 @@ const FileItem = memo(function FileItem({
           >
             <CopyIcon className="w-4 h-4 stroke-[1.6]" />
             Duplicate
+          </ContextMenu.Item>
+          <ContextMenu.Item
+            className={menuItemClass}
+            onSelect={() => onRenameNote(note.id, cleanTitle(note.title))}
+          >
+            <PencilIcon className="w-4 h-4 stroke-[1.6]" />
+            Rename
           </ContextMenu.Item>
           <ContextMenu.Item
             className={menuItemClass}
@@ -265,6 +274,7 @@ interface FolderItemProps {
   onUnpinNote: (id: string) => Promise<void>;
   onDuplicateNote: (id: string) => Promise<void>;
   onDeleteNote: (id: string) => void;
+  onRenameNote: (id: string, currentName: string) => void;
   onMoveNoteToParent: (id: string, targetFolder: string) => void;
   onMoveFolderToParent: (path: string, targetParent: string) => void;
 }
@@ -287,6 +297,7 @@ const FolderItemComponent = memo(function FolderItem({
   onUnpinNote,
   onDuplicateNote,
   onDeleteNote,
+  onRenameNote,
   onMoveNoteToParent,
   onMoveFolderToParent,
 }: FolderItemProps) {
@@ -325,7 +336,7 @@ const FolderItemComponent = memo(function FolderItem({
         >
           <div
             ref={setDropRef}
-            className={`flex items-center gap-1.5 py-1.5 cursor-pointer rounded-md select-none transition-colors ${
+            className={`flex items-center gap-1.5 py-[3px] cursor-pointer rounded-md select-none transition-colors ${
               isOver
                 ? "bg-accent/10 ring-1 ring-accent"
                 : isFocused
@@ -342,13 +353,13 @@ const FolderItemComponent = memo(function FolderItem({
             ) : (
               <ChevronDownIcon className="w-4 h-4 stroke-[1.6] text-text-muted/60 shrink-0" />
             )}
-            <span className="text-sm text-text-muted truncate">
+            <span className="text-sm font-semibold text-text-muted truncate">
               {folder.name}
             </span>
           </div>
 
           {!isCollapsed && (
-            <div className="flex flex-col gap-0.5">
+            <div className="flex flex-col gap-0.5 border-l border-border/40 ml-3.5 pl-1">
               {folder.children.map((child) => (
                 <FolderItemComponent
                   key={child.path}
@@ -369,6 +380,7 @@ const FolderItemComponent = memo(function FolderItem({
                   onUnpinNote={onUnpinNote}
                   onDuplicateNote={onDuplicateNote}
                   onDeleteNote={onDeleteNote}
+                  onRenameNote={onRenameNote}
                   onMoveNoteToParent={onMoveNoteToParent}
                   onMoveFolderToParent={onMoveFolderToParent}
                 />
@@ -386,6 +398,7 @@ const FolderItemComponent = memo(function FolderItem({
                   onUnpin={onUnpinNote}
                   onDuplicate={onDuplicateNote}
                   onDelete={onDeleteNote}
+                  onRenameNote={onRenameNote}
                   onMoveToParent={onMoveNoteToParent}
                   focusedItemKey={focusedItemKey}
                 />
@@ -517,6 +530,9 @@ export function FolderTreeView({
   const [subfolderParent, setSubfolderParent] = useState("");
   const [noteDeleteDialogOpen, setNoteDeleteDialogOpen] = useState(false);
   const [noteToDelete, setNoteToDelete] = useState<string | null>(null);
+  const [renameNoteDialogOpen, setRenameNoteDialogOpen] = useState(false);
+  const [noteToRename, setNoteToRename] = useState<string | null>(null);
+  const [renameNoteDefaultValue, setRenameNoteDefaultValue] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
   const [knownFolders, setKnownFolders] = useState<string[]>([]);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -646,6 +662,32 @@ export function FolderTreeView({
     },
     [folderToRename, renameFolder],
   );
+
+  const handleRenameNoteConfirm = useCallback(
+    async (newName: string) => {
+      if (noteToRename) {
+        try {
+          const newId = await notesService.renameNote(noteToRename, newName);
+          setNoteToRename(null);
+          setRenameNoteDialogOpen(false);
+          // Auto-select if the renamed note was selected
+          if (selectedNoteId === noteToRename) {
+            selectNote(newId);
+          }
+        } catch (error) {
+          console.error("Failed to rename note:", error);
+          toast.error(`Failed to rename note`);
+        }
+      }
+    },
+    [noteToRename, selectedNoteId, selectNote],
+  );
+
+  const handleRenameNote = useCallback((id: string, currentName: string) => {
+    setNoteToRename(id);
+    setRenameNoteDefaultValue(currentName);
+    setRenameNoteDialogOpen(true);
+  }, []);
 
   const handleSubfolderConfirm = useCallback(
     async (name: string) => {
@@ -870,6 +912,7 @@ export function FolderTreeView({
             onUnpin={unpinNote}
             onDuplicate={duplicateNote}
             onDelete={openDeleteNoteDialog}
+            onRenameNote={handleRenameNote}
             focusedItemKey={focusedItemKey}
           />
         ))}
@@ -895,6 +938,7 @@ export function FolderTreeView({
             onUnpinNote={unpinNote}
             onDuplicateNote={duplicateNote}
             onDeleteNote={openDeleteNoteDialog}
+            onRenameNote={handleRenameNote}
             onMoveNoteToParent={moveNote}
             onMoveFolderToParent={moveFolder}
           />
@@ -914,6 +958,7 @@ export function FolderTreeView({
             onUnpin={unpinNote}
             onDuplicate={duplicateNote}
             onDelete={openDeleteNoteDialog}
+            onRenameNote={handleRenameNote}
             focusedItemKey={focusedItemKey}
           />
         ))}
@@ -953,6 +998,17 @@ export function FolderTreeView({
         description="Enter a new name for the folder"
         confirmLabel="Rename"
         defaultValue={renameDefaultValue}
+      />
+
+      {/* Rename note dialog */}
+      <FolderNameDialog
+        open={renameNoteDialogOpen}
+        onOpenChange={setRenameNoteDialogOpen}
+        onConfirm={handleRenameNoteConfirm}
+        title="Rename Note"
+        description="Enter a new name for the note"
+        confirmLabel="Rename"
+        defaultValue={renameNoteDefaultValue}
       />
 
       {/* New subfolder dialog */}

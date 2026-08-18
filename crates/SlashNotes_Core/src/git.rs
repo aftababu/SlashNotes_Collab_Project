@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::process::Command;
 
@@ -30,7 +31,8 @@ fn git_cmd() -> Command {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct GitStatus {
     pub is_repo: bool,
     pub has_remote: bool,
@@ -43,7 +45,7 @@ pub struct GitStatus {
     pub error: Option<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GitResult {
     pub success: bool,
     pub message: Option<String>,
@@ -175,13 +177,18 @@ fn extract_http_status(msg: &str) -> Option<u16> {
 }
 
 /// Check if a directory is a git repository.
-///
-/// A valid repository has a `.git` directory. Some tools create a `.git` *file*
-/// (git worktrees / submodules); that still counts as a repository for our
-/// purposes, but it must exist and be readable, not merely be a dangling path.
 pub fn is_git_repo(path: &Path) -> bool {
     let dot_git = path.join(".git");
-    dot_git.is_dir() || dot_git.is_file()
+    if dot_git.is_dir() || dot_git.is_file() {
+        return true;
+    }
+    if let Ok(canonical) = path.canonicalize() {
+        let dot_git_can = canonical.join(".git");
+        if dot_git_can.is_dir() || dot_git_can.is_file() {
+            return true;
+        }
+    }
+    git2::Repository::open(path).is_ok()
 }
 
 /// Initialize a git repository
@@ -499,9 +506,10 @@ pub fn get_remote_url(path: &Path) -> Option<String> {
         .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
 }
 
-/// Add remote 'origin'
+/// Add remote 'origin' (idempotent: updates existing URL if 'origin' already exists)
 pub fn add_remote(path: &Path, url: &str) -> GitResult {
-    if !is_valid_remote_url(url) {
+    let normalized = url.trim();
+    if !is_valid_remote_url(normalized) {
         return GitResult {
             success: false,
             message: None,
@@ -510,7 +518,7 @@ pub fn add_remote(path: &Path, url: &str) -> GitResult {
     }
 
     let output = git_cmd()
-        .args(["remote", "add", "origin", url])
+        .args(["remote", "add", "origin", normalized])
         .current_dir(path)
         .output();
 
@@ -524,10 +532,14 @@ pub fn add_remote(path: &Path, url: &str) -> GitResult {
                 }
             } else {
                 let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+                if stderr.to_lowercase().contains("already exists") {
+                    // Idempotent fallback: if remote origin already exists, update its URL instead
+                    return set_remote_url(path, normalized);
+                }
                 GitResult {
                     success: false,
                     message: None,
-                    error: Some(stderr),
+                    error: Some(stderr.trim().to_string()),
                 }
             }
         }
@@ -539,7 +551,7 @@ pub fn add_remote(path: &Path, url: &str) -> GitResult {
     }
 }
 
-/// Set URL for remote 'origin'
+/// Set URL for remote 'origin' (idempotent: adds remote if 'origin' does not exist)
 pub fn set_remote_url(path: &Path, url: &str) -> GitResult {
     let normalized = url.trim();
     if !is_valid_remote_url(normalized) {
@@ -565,6 +577,22 @@ pub fn set_remote_url(path: &Path, url: &str) -> GitResult {
                 }
             } else {
                 let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+                if stderr.to_lowercase().contains("no such remote") {
+                    // Idempotent fallback: if remote origin does not exist yet, add it
+                    let add_out = git_cmd()
+                        .args(["remote", "add", "origin", normalized])
+                        .current_dir(path)
+                        .output();
+                    if let Ok(add_o) = add_out {
+                        if add_o.status.success() {
+                            return GitResult {
+                                success: true,
+                                message: Some("Remote added successfully".to_string()),
+                                error: None,
+                            };
+                        }
+                    }
+                }
                 GitResult {
                     success: false,
                     message: None,
@@ -926,6 +954,158 @@ fn parse_push_error(stderr: &str) -> String {
         msg
     } else {
         stderr.trim().to_string()
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct VaultSignatureCheck {
+    pub matches: bool,
+    pub remote_vault_id: Option<String>,
+    pub local_vault_id: String,
+}
+
+pub fn get_or_create_vault_id(path: &Path) -> String {
+    let slashnote_dir = path.join(".slashnote");
+    if !slashnote_dir.exists() {
+        let _ = std::fs::create_dir_all(&slashnote_dir);
+    }
+    let vault_json_path = slashnote_dir.join("vault.json");
+    if vault_json_path.exists() {
+        if let Ok(content) = std::fs::read_to_string(&vault_json_path) {
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&content) {
+                if let Some(id) = v.get("id").and_then(|s| s.as_str()) {
+                    return id.to_string();
+                }
+            }
+        }
+    }
+
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    let new_id = format!("vault_{}_{}", timestamp, std::process::id());
+    let json_content = serde_json::json!({
+        "id": new_id,
+        "createdAt": timestamp
+    });
+    let _ = std::fs::write(&vault_json_path, serde_json::to_string_pretty(&json_content).unwrap_or_default());
+    new_id
+}
+
+pub fn check_vault_signature(path: &Path) -> VaultSignatureCheck {
+    let local_id = get_or_create_vault_id(path);
+
+    if !is_git_repo(path) {
+        return VaultSignatureCheck {
+            matches: true,
+            remote_vault_id: None,
+            local_vault_id: local_id,
+        };
+    }
+
+    let _ = git_cmd()
+        .args(["fetch", "origin", "--quiet"])
+        .current_dir(path)
+        .output();
+
+    let branch = get_status(path).current_branch.unwrap_or_else(|| "main".to_string());
+    let spec = format!("origin/{}:.slashnote/vault.json", branch);
+
+    if let Ok(out) = git_cmd().args(["show", &spec]).current_dir(path).output() {
+        if out.status.success() {
+            let content = String::from_utf8_lossy(&out.stdout);
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&content) {
+                if let Some(remote_id) = v.get("id").and_then(|s| s.as_str()) {
+                    let matches = remote_id == local_id;
+                    return VaultSignatureCheck {
+                        matches,
+                        remote_vault_id: Some(remote_id.to_string()),
+                        local_vault_id: local_id,
+                    };
+                }
+            }
+        }
+    }
+
+    VaultSignatureCheck {
+        matches: true,
+        remote_vault_id: None,
+        local_vault_id: local_id,
+    }
+}
+
+pub fn push_dual_branch(path: &Path, force: bool) -> GitResult {
+    if !is_git_repo(path) {
+        return GitResult {
+            success: false,
+            message: None,
+            error: Some("Not a git repository".to_string()),
+        };
+    }
+
+    // Ensure vault.json exists and is staged
+    let _ = get_or_create_vault_id(path);
+    let _ = git_cmd().args(["add", ".slashnote/vault.json"]).current_dir(path).output();
+
+    let branch = get_status(path).current_branch.unwrap_or_else(|| "main".to_string());
+
+    // 1. Layer 2: Always push to protected 'vault-backup' branch using standard non-force append
+    let backup_ref = format!("HEAD:refs/heads/vault-backup");
+    let backup_out = git_cmd()
+        .args(["-c", "http.lowSpeedLimit=1000", "-c", "http.lowSpeedTime=10", "push", "origin", &backup_ref])
+        .env("GIT_SSH_COMMAND", "ssh -o ConnectTimeout=10")
+        .current_dir(path)
+        .output();
+
+    if let Ok(out) = &backup_out {
+        if out.status.success() {
+            println!("[Git] Dual-branch: Safety snapshot pushed to vault-backup");
+        } else {
+            eprintln!("[Git] Dual-branch backup warning: {}", String::from_utf8_lossy(&out.stderr));
+        }
+    }
+
+    // 2. Push to main branch (master/main)
+    let main_ref = format!("HEAD:refs/heads/{}", branch);
+    let mut args = vec!["-c", "http.lowSpeedLimit=1000", "-c", "http.lowSpeedTime=10", "push"];
+    if force {
+        args.push("--force");
+    } else {
+        args.push("--force-with-lease");
+    }
+    args.push("origin");
+    args.push(&main_ref);
+
+    let output = git_cmd()
+        .args(&args)
+        .env("GIT_SSH_COMMAND", "ssh -o ConnectTimeout=10")
+        .current_dir(path)
+        .output();
+
+    match output {
+        Ok(out) => {
+            if out.status.success() {
+                GitResult {
+                    success: true,
+                    message: Some(format!("Synced to {} and vault-backup", branch)),
+                    error: None,
+                }
+            } else {
+                let stderr = String::from_utf8_lossy(&out.stderr).to_string();
+                GitResult {
+                    success: false,
+                    message: None,
+                    error: Some(parse_push_error(&stderr)),
+                }
+            }
+        }
+        Err(e) => GitResult {
+            success: false,
+            message: None,
+            error: Some(format!("Failed to push: {}", e)),
+        },
     }
 }
 

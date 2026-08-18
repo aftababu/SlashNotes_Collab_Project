@@ -77,7 +77,7 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
       {/* Sidebar - matches main Notes sidebar */}
       <div className="w-64 h-full bg-bg-secondary border-r border-border flex flex-col select-none">
         {/* Drag region */}
-        <div className="h-11 shrink-0" data-tauri-drag-region></div>
+        <div className="h-5 shrink-0" data-tauri-drag-region></div>
 
         {/* Header with back button and Settings title */}
         <div className="flex items-center justify-between px-3 pb-2 border-b border-border shrink-0">
@@ -122,7 +122,7 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
       {/* Main content area */}
       <div className="flex-1 flex flex-col bg-bg overflow-hidden">
         {/* Drag region */}
-        <div className="h-11 shrink-0" data-tauri-drag-region></div>
+        <div className="h-5 shrink-0" data-tauri-drag-region></div>
 
         {/* Content - centered with max width */}
         <div

@@ -48,8 +48,8 @@ fun InNoteSearchBar(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(52.dp),
-            color = StitchSurfaceSecondary,
-            border = BorderStroke(1.dp, StitchBorder),
+            color = MaterialTheme.colorScheme.background,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
             tonalElevation = 8.dp
         ) {
             Row(
@@ -62,8 +62,8 @@ fun InNoteSearchBar(
                 OutlinedTextField(
                     value = query,
                     onValueChange = onQueryChange,
-                    placeholder = { Text("search...", fontSize = 13.sp, color = StitchTextMuted) },
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = StitchTextMuted, modifier = Modifier.size(16.dp)) },
+                    placeholder = { Text("search...", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp)) },
                     singleLine = true,
                     maxLines = 1,
                     modifier = Modifier
@@ -71,17 +71,17 @@ fun InNoteSearchBar(
                         .focusRequester(focusRequester),
                     shape = RoundedCornerShape(6.dp),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = StitchCardBg,
-                        unfocusedContainerColor = StitchCardBg,
-                        focusedBorderColor = StitchBorder,
-                        unfocusedBorderColor = StitchBorder
+                        focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                        focusedBorderColor = MaterialTheme.colorScheme.outline,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outline
                     )
                 )
 
                 Spacer(modifier = Modifier.width(8.dp))
 
                 // Divider 1
-                VerticalDivider(color = StitchBorder, modifier = Modifier.height(24.dp))
+                VerticalDivider(color = MaterialTheme.colorScheme.outline, modifier = Modifier.height(24.dp))
 
                 // Match Count Display (e.g., 1/3)
                 Box(
@@ -92,12 +92,12 @@ fun InNoteSearchBar(
                         text = if (query.isNotEmpty() && matchCount > 0) "${currentMatchIndex + 1}/$matchCount" else "0/0",
                         fontSize = 12.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = Color.White
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 }
 
                 // Divider 2
-                VerticalDivider(color = StitchBorder, modifier = Modifier.height(24.dp))
+                VerticalDivider(color = MaterialTheme.colorScheme.outline, modifier = Modifier.height(24.dp))
 
                 // Prev Match Button
                 IconButton(
@@ -105,11 +105,11 @@ fun InNoteSearchBar(
                     enabled = query.isNotEmpty() && matchCount > 0,
                     modifier = Modifier.size(36.dp)
                 ) {
-                    Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Previous match", tint = if (query.isNotEmpty() && matchCount > 0) Color.White else StitchTextMuted, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Previous match", tint = if (query.isNotEmpty() && matchCount > 0) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
                 }
 
                 // Divider 3
-                VerticalDivider(color = StitchBorder, modifier = Modifier.height(24.dp))
+                VerticalDivider(color = MaterialTheme.colorScheme.outline, modifier = Modifier.height(24.dp))
 
                 // Next Match Button
                 IconButton(
@@ -117,18 +117,18 @@ fun InNoteSearchBar(
                     enabled = query.isNotEmpty() && matchCount > 0,
                     modifier = Modifier.size(36.dp)
                 ) {
-                    Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Next match", tint = if (query.isNotEmpty() && matchCount > 0) Color.White else StitchTextMuted, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Next match", tint = if (query.isNotEmpty() && matchCount > 0) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
                 }
 
                 // Divider 4
-                VerticalDivider(color = StitchBorder, modifier = Modifier.height(24.dp))
+                VerticalDivider(color = MaterialTheme.colorScheme.outline, modifier = Modifier.height(24.dp))
 
                 // Close Button
                 IconButton(
                     onClick = onClose,
                     modifier = Modifier.size(36.dp)
                 ) {
-                    Icon(Icons.Default.Clear, contentDescription = "Close search", tint = StitchTextMuted, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Default.Clear, contentDescription = "Close search", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
                 }
             }
         }

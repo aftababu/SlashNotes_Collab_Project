@@ -34,8 +34,22 @@ export async function gitCommit(message: string): Promise<GitResult> {
   return invoke("git_commit", { message });
 }
 
+export interface VaultSignatureCheck {
+  matches: boolean;
+  remoteVaultId: string | null;
+  localVaultId: string;
+}
+
+export async function checkVaultSignature(): Promise<VaultSignatureCheck> {
+  return invoke("git_check_vault_signature");
+}
+
+export async function pushDualBranch(force: boolean = false): Promise<GitResult> {
+  return invoke("git_push_dual_branch", { force });
+}
+
 export async function gitPush(): Promise<GitResult> {
-  return invoke("git_push");
+  return invoke("git_push_dual_branch", { force: false });
 }
 
 export async function gitFetch(): Promise<GitResult> {

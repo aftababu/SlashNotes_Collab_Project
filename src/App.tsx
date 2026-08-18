@@ -9,6 +9,7 @@ import { Sidebar } from "./components/layout/Sidebar";
 import { Editor } from "./components/editor/Editor";
 import type { Editor as TiptapEditor } from "@tiptap/react";
 import { FolderPicker } from "./components/layout/FolderPicker";
+import { CustomTitleBar } from "./components/layout/CustomTitleBar";
 import { CommandPalette } from "./components/command-palette/CommandPalette";
 import { SettingsPage } from "./components/settings";
 import {
@@ -464,26 +465,33 @@ function AppContent() {
   }
 
   return (
-    <>
-      <div className="h-full min-h-0 flex bg-bg text-text overflow-hidden">
+    <div className="h-full flex flex-col relative bg-bg text-text selection:bg-accent/30 font-sans">
+      <CustomTitleBar />
+      <div className="flex-1 flex overflow-hidden">
+        {/* Settings View */}
         {view === "settings" ? (
           <SettingsPage onBack={closeSettings} />
         ) : (
           <>
-            <div
-              data-sidebar
-              className={`transition-all duration-500 ease-out overflow-hidden ${!sidebarVisible || focusMode ? "opacity-0 -translate-x-4 w-0 pointer-events-none" : "opacity-100 translate-x-0 w-64"}`}
-            >
-              <Sidebar onOpenSettings={toggleSettings} />
-            </div>
-            <Editor
-              onToggleSidebar={toggleSidebar}
-              sidebarVisible={sidebarVisible}
-              focusMode={focusMode}
-              onEditorReady={(editor) => {
-                editorRef.current = editor;
-              }}
-            />
+            {/* Notes View */}
+            {view === "notes" && (
+              <>
+                <div
+                  data-sidebar
+                  className={`transition-all duration-500 ease-out overflow-hidden ${!sidebarVisible || focusMode ? "opacity-0 -translate-x-4 w-0 pointer-events-none" : "opacity-100 translate-x-0 w-64"}`}
+                >
+                  <Sidebar onOpenSettings={toggleSettings} />
+                </div>
+                <Editor
+                  onToggleSidebar={toggleSidebar}
+                  sidebarVisible={sidebarVisible}
+                  focusMode={focusMode}
+                  onEditorReady={(editor) => {
+                    editorRef.current = editor;
+                  }}
+                />
+              </>
+            )}
           </>
         )}
       </div>
@@ -550,7 +558,7 @@ function AppContent() {
           </div>
         </div>
       )}
-    </>
+    </div>
   );
 }
 
@@ -568,12 +576,14 @@ async function showUpdateToast(): Promise<"update" | "no-update" | "error"> {
     }
     return "no-update";
   } catch (err) {
-    // Network errors and 404s (no release published yet) are not real failures
+    // Network errors, 404s, and unconfigured dev endpoints are expected when no update server is configured
     const msg = String(err);
     if (
       msg.includes("404") ||
       msg.includes("network") ||
-      msg.includes("Could not fetch")
+      msg.includes("Could not fetch") ||
+      msg.includes("endpoints set") ||
+      msg.includes("does not have any endpoints")
     ) {
       return "no-update";
     }
@@ -660,26 +670,18 @@ function App() {
     return () => clearTimeout(timer);
   }, [isPreview]);
 
-  // Preview mode: lightweight editor without sidebar, search, git
-  if (isPreview && previewFile) {
-    return (
-      <ThemeProvider>
-        <Toaster />
-        <TooltipProvider>
-          <PreviewApp filePath={decodeURIComponent(previewFile)} />
-        </TooltipProvider>
-      </ThemeProvider>
-    );
-  }
-
-  // Folder mode: full app with sidebar, search, git, etc.
+  // Render App with Theme, Tooltip, Notes, and Git Providers
   return (
     <ThemeProvider>
       <Toaster />
       <TooltipProvider>
         <NotesProvider>
           <GitProvider>
-            <AppContent />
+            {isPreview && previewFile ? (
+              <PreviewApp filePath={decodeURIComponent(previewFile)} />
+            ) : (
+              <AppContent />
+            )}
           </GitProvider>
         </NotesProvider>
       </TooltipProvider>

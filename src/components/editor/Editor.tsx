@@ -69,7 +69,7 @@ import { Wikilink, type WikilinkStorage } from "./Wikilink";
 import { WikilinkSuggestion } from "./WikilinkSuggestion";
 import { EditorWidthHandles } from "./EditorWidthHandle";
 import { SlashNoteBlockMath, normalizeBlockMath } from "./MathExtensions";
-import { cn } from "../../lib/utils";
+import { cn, cleanTitle } from "../../lib/utils";
 import { plainTextFromMarkdown } from "../../lib/plainText";
 import { Button, IconButton, ToolbarButton, Tooltip } from "../ui";
 import * as notesService from "../../services/notes";
@@ -1340,16 +1340,24 @@ export function Editor({
       const wikilinkEl = target.closest("[data-wikilink]");
       if (wikilinkEl) {
         e.preventDefault();
-        const noteTitle = wikilinkEl.getAttribute("data-note-title");
+        const noteTitleRaw = wikilinkEl.getAttribute("data-note-title");
         const currentNotes = notesRef.current;
-        if (noteTitle && currentNotes) {
-          const note = currentNotes.find(
-            (n) => n.title.toLowerCase() === noteTitle.toLowerCase(),
-          );
-          if (note) {
-            notesCtxRef.current?.selectNote(note.id);
-          } else {
-            toast.info(`Note "${noteTitle}" does not exist yet`);
+        if (noteTitleRaw && currentNotes) {
+          const parts = noteTitleRaw.split("#", 2);
+          const rawPath = parts[0].trim();
+          
+          if (rawPath) {
+            const targetFileName = rawPath.toLowerCase().endsWith(".md") ? rawPath : `${rawPath}.md`;
+            const note = currentNotes.find(
+              (n) => n.id.toLowerCase() === targetFileName.toLowerCase() ||
+                     n.id.toLowerCase() === rawPath.toLowerCase() ||
+                     n.title.toLowerCase() === rawPath.toLowerCase()
+            );
+            if (note) {
+              notesCtxRef.current?.selectNote(note.id);
+            } else {
+              toast.info(`Note "${rawPath}" does not exist yet`);
+            }
           }
         }
         return;
@@ -1362,13 +1370,35 @@ export function Editor({
         if ((e.metaKey || e.ctrlKey) && link.href) {
           // Use raw href attribute and normalize to handle protocol-less URLs
           const rawHref = link.getAttribute("href") ?? "";
-          const normalizedHref = normalizeUrl(rawHref);
-          if (isAllowedUrlScheme(normalizedHref)) {
-            openUrl(normalizedHref).catch((error) =>
-              console.error("Failed to open link:", error),
-            );
+          if (rawHref.startsWith("#")) {
+            // Ignore heading scroll for now
+          } else if (rawHref.startsWith("http") || rawHref.startsWith("mailto:")) {
+            const normalizedHref = normalizeUrl(rawHref);
+            if (isAllowedUrlScheme(normalizedHref)) {
+              openUrl(normalizedHref).catch((error) =>
+                console.error("Failed to open link:", error),
+              );
+            } else {
+              toast.error("Cannot open links with this URL scheme");
+            }
           } else {
-            toast.error("Cannot open links with this URL scheme");
+            // Internal markdown link traversal
+            const parts = rawHref.split("#", 2);
+            const rawPath = parts[0].trim();
+            const currentNotes = notesRef.current;
+            if (rawPath && currentNotes) {
+              const targetFileName = rawPath.toLowerCase().endsWith(".md") ? rawPath : `${rawPath}.md`;
+              const note = currentNotes.find(
+                (n) => n.id.toLowerCase() === targetFileName.toLowerCase() ||
+                       n.id.toLowerCase() === rawPath.toLowerCase() ||
+                       n.title.toLowerCase() === rawPath.toLowerCase()
+              );
+              if (note) {
+                notesCtxRef.current?.selectNote(note.id);
+              } else {
+                toast.info(`Note "${rawPath}" does not exist yet`);
+              }
+            }
           }
         }
       }
@@ -2080,7 +2110,7 @@ export function Editor({
       return (
         <div className="flex-1 flex flex-col bg-bg">
           <div
-            className="h-10 shrink-0 flex items-end px-4 pb-1"
+            className="h-5 shrink-0 flex items-end px-4 pb-0"
             data-tauri-drag-region
           ></div>
           <div className="flex-1 flex items-center justify-center">
@@ -2095,7 +2125,7 @@ export function Editor({
       return (
         <div className="flex-1 flex flex-col bg-bg">
           <div
-            className="h-10 shrink-0 flex items-end px-4 pb-1"
+            className="h-5 shrink-0 flex items-end px-4 pb-0"
             data-tauri-drag-region
           ></div>
           <div className="flex-1 flex items-center justify-center">
@@ -2105,22 +2135,27 @@ export function Editor({
       );
     }
 
-    // Folder mode: show empty state with "New Note" button
+    // Folder / empty mode: show dashboard with "New Note" trigger and top 5 recent notes list
+    const recentDashboardNotes = (notesCtx?.notes || [])
+      .slice()
+      .sort((a, b) => b.modified - a.modified)
+      .slice(0, 5);
+
     return (
       <div className="flex-1 flex flex-col bg-bg">
         {/* Drag region */}
         <div
-          className="h-10 shrink-0 flex items-end px-4 pb-1"
+          className="h-5 shrink-0 flex items-end px-4 pb-0"
           data-tauri-drag-region
         ></div>
-        <div className="flex-1 flex items-center justify-center pb-8">
-          <div className="text-center text-text-muted select-none">
+        <div className="flex-1 flex flex-col items-center justify-center pb-8 px-4 overflow-y-auto">
+          <div className="text-center text-text-muted select-none max-w-md w-full">
             <img
               src="/SlashNote.png"
               alt="SlashNote"
-              className="w-42 aspect-square mx-auto mb-1 opacity-40"
+              className="w-32 aspect-square mx-auto mb-1 opacity-40"
             />
-            <h1 className="text-2xl text-text font-serif mb-1 tracking-[-0.01em] ">
+            <h1 className="text-2xl text-text font-serif mb-1 tracking-[-0.01em]">
               What's on your mind?
             </h1>
             <p className="text-sm">
@@ -2131,7 +2166,7 @@ export function Editor({
                 onClick={createNote}
                 variant="secondary"
                 size="md"
-                className="mt-4"
+                className="mt-4 border border-border"
               >
                 New Note{" "}
                 <span className="text-text-muted ml-1">
@@ -2139,6 +2174,32 @@ export function Editor({
                   {isMac ? "" : "+"}N
                 </span>
               </Button>
+            )}
+
+            {recentDashboardNotes.length > 0 && (
+              <div className="mt-8 text-left border border-border/60 rounded-lg p-3 bg-bg-secondary/50 shadow-sm">
+                <div className="text-2xs font-semibold tracking-wider text-text-muted uppercase px-2 mb-2">
+                  Recent Notes
+                </div>
+                <div className="flex flex-col gap-1">
+                  {recentDashboardNotes.map((note) => (
+                    <div
+                      key={note.id}
+                      onClick={() => notesCtx?.selectNote?.(note.id)}
+                      className="group flex items-center justify-between px-2.5 py-1.5 rounded-md cursor-pointer hover:bg-bg-muted transition-colors"
+                    >
+                      <div className="flex items-center gap-2 truncate min-w-0">
+                        <span className="text-sm font-medium text-text truncate group-hover:text-accent">
+                          {cleanTitle(note.title)}
+                        </span>
+                      </div>
+                      <span className="text-2xs text-text-muted shrink-0 ml-2">
+                        {formatDateTime(note.modified)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
             )}
           </div>
         </div>
@@ -2151,7 +2212,7 @@ export function Editor({
       {/* Drag region with sidebar toggle, date and save status */}
       <div
         className={cn(
-          "h-11 shrink-0 flex items-center justify-between px-3",
+          "h-5 shrink-0 flex items-center justify-between px-3",
           !isSidebarActive && "pl-22",
         )}
         data-tauri-drag-region

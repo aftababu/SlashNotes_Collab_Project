@@ -11,6 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -22,7 +23,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -422,7 +425,7 @@ private fun HeadingBlock(block: MdBlock.Heading, raw: String) {
         text = inlineMarkdown(block.content, raw),
         fontSize = size,
         fontWeight = FontWeight.Bold,
-        color = Color.White,
+        color = MaterialTheme.colorScheme.onSurface,
         lineHeight = size * 1.25f
     )
 }
@@ -432,10 +435,11 @@ private fun ClickableMarkdownText(
     annotatedString: AnnotatedString,
     fontSize: androidx.compose.ui.unit.TextUnit = 14.sp,
     lineHeight: androidx.compose.ui.unit.TextUnit = 21.sp,
-    color: Color = Color(0xFFE8E2E0),
+    color: Color = MaterialTheme.colorScheme.onSurface,
     onWikilinkClick: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
+    @Suppress("DEPRECATION")
     androidx.compose.foundation.text.ClickableText(
         text = annotatedString,
         style = androidx.compose.ui.text.TextStyle(
@@ -459,7 +463,7 @@ private fun ParagraphBlock(block: MdBlock.Paragraph, raw: String, onWikilinkClic
         annotatedString = inlineMarkdown(block.content, raw),
         fontSize = 14.sp,
         lineHeight = 21.sp,
-        color = Color(0xFFE8E2E0),
+        color = MaterialTheme.colorScheme.onSurface,
         onWikilinkClick = onWikilinkClick
     )
 }
@@ -506,7 +510,7 @@ private fun ListBlock(block: MdBlock.ListBlock, raw: String, onWikilinkClick: ((
                     annotatedString = inlineMarkdown(item.content, raw),
                     fontSize = 14.sp,
                     lineHeight = 21.sp,
-                    color = Color(0xFFE8E2E0),
+                    color = MaterialTheme.colorScheme.onSurface,
                     onWikilinkClick = onWikilinkClick,
                     modifier = Modifier.weight(1f)
                 )
@@ -535,26 +539,78 @@ private fun BlockquoteBlock(block: MdBlock.Blockquote, raw: String, onWikilinkCl
     }
 }
 
+private object SyntaxHighlighter {
+    private val stringColor = Color(0xFF10B981) // Green
+    private val keywordColor = Color(0xFF3B82F6) // Blue
+    private val numberColor = Color(0xFFF59E0B) // Orange
+    private val commentColor = Color(0xFF6B7280) // Gray
+    private val typeColor = Color(0xFF8B5CF6) // Purple
+
+    private val stringPattern = Regex("""(".*?"|'.*?'|`.*?`)""")
+    private val keywordPattern = Regex("""\b(fun|const|let|var|val|if|else|return|class|interface|for|while|import|export|function|public|private|protected|static|extends|implements|fn|mut|impl|struct|enum|match)\b""")
+    private val numberPattern = Regex("""\b(\d+)\b""")
+    private val commentPattern = Regex("""(//.*|/\*[\s\S]*?\*/)""")
+    private val typePattern = Regex("""\b([A-Z][a-zA-Z0-9_]*)\b""")
+
+    fun highlight(code: String): AnnotatedString {
+        val builder = AnnotatedString.Builder(code)
+        
+        fun applyPattern(pattern: Regex, color: Color) {
+            pattern.findAll(code).forEach { match ->
+                builder.addStyle(SpanStyle(color = color), match.range.first, match.range.last + 1)
+            }
+        }
+
+        applyPattern(typePattern, typeColor)
+        applyPattern(keywordPattern, keywordColor)
+        applyPattern(numberPattern, numberColor)
+        applyPattern(stringPattern, stringColor)
+        applyPattern(commentPattern, commentColor)
+
+        return builder.toAnnotatedString()
+    }
+}
+
 @Composable
 private fun CodeBlockView(block: MdBlock.CodeBlock) {
+    val clipboardManager = LocalClipboardManager.current
+    
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .background(StitchCodeBg, RoundedCornerShape(8.dp))
             .padding(12.dp)
     ) {
-        if (block.language.isNotBlank()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Text(
-                text = block.language.uppercase(),
+                text = if (block.language.isNotBlank()) block.language.uppercase() else "CODE",
                 fontSize = 10.sp,
                 fontWeight = FontWeight.Bold,
                 color = StitchAccentCoral,
                 letterSpacing = 1.sp
             )
-            Spacer(modifier = Modifier.height(6.dp))
+            IconButton(
+                onClick = {
+                    clipboardManager.setText(AnnotatedString(block.code))
+                },
+                modifier = Modifier.size(24.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.ContentCopy,
+                    contentDescription = "Copy code",
+                    tint = StitchTextMuted,
+                    modifier = Modifier.size(14.dp)
+                )
+            }
         }
+        Spacer(modifier = Modifier.height(6.dp))
+        
         Text(
-            text = block.code,
+            text = SyntaxHighlighter.highlight(block.code),
             fontFamily = FontFamily.Monospace,
             fontSize = 12.sp,
             lineHeight = 17.sp,
@@ -645,7 +701,7 @@ private fun androidx.compose.foundation.layout.RowScope.TableCell(
             text = text,
             fontSize = if (isHeader) 13.sp else 12.sp,
             fontWeight = if (isHeader) FontWeight.Bold else FontWeight.Normal,
-            color = if (isHeader) Color.White else Color(0xFFE8E2E0),
+            color = if (isHeader) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 2
         )
     }
@@ -897,9 +953,11 @@ private fun inlineMarkdown(text: String, raw: String): AnnotatedString {
                 m.groupValues[5].isNotEmpty() -> {
                     val label = m.groupValues[5]
                     val url = m.groupValues[6]
+                    pushStringAnnotation(tag = "WIKILINK", annotation = url)
                     withStyle(SpanStyle(color = Color(0xFF3B82F6), textDecoration = TextDecoration.Underline)) {
                         append(label)
                     }
+                    pop()
                 }
                 m.groupValues[7].isNotEmpty() -> {
                     withStyle(SpanStyle(fontWeight = FontWeight.Bold)) {

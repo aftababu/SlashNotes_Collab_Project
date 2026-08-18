@@ -45,6 +45,7 @@ fun FolderTreeView(
     notesDir: String,
     currentRelativeDir: String,
     selectedFilename: String?,
+    searchQuery: String = "",
     showAllFiles: Boolean = false,
     onNavigateDir: (newRelativeDir: String) -> Unit,
     onSelectNote: (filename: String) -> Unit,
@@ -54,6 +55,7 @@ fun FolderTreeView(
     val scope = rememberCoroutineScope()
     var expandedPaths by remember { mutableStateOf(setOf<String>()) }
     var rootItems by remember { mutableStateOf<List<FolderItem>>(emptyList()) }
+    var searchResults by remember { mutableStateOf<List<NoteHeader>>(emptyList()) }
 
     // Lazily-loaded children per expanded folder path. Only expanded folders
     // are read from disk, and rows are flattened so the LazyColumn virtualizes.
@@ -78,6 +80,16 @@ fun FolderTreeView(
 
     LaunchedEffect(notesDir, currentRelativeDir, showAllFiles) {
         refreshFolderTree()
+    }
+
+    LaunchedEffect(searchQuery, notesDir) {
+        if (searchQuery.isNotBlank()) {
+            searchResults = withContext(Dispatchers.IO) {
+                searchNotes(notesDir, searchQuery)
+            }
+        } else {
+            searchResults = emptyList()
+        }
     }
 
     // Load children for a folder (called when expanding).
@@ -157,6 +169,45 @@ fun FolderTreeView(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+        } else if (searchQuery.isNotBlank()) {
+            if (searchResults.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(24.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("No matching notes found", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(vertical = 4.dp, horizontal = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    items(searchResults, key = { it.id }) { note ->
+                        Surface(
+                            onClick = { onSelectNote(note.id) },
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.Edit, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column {
+                                    Text(note.title, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(note.id, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         } else {
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
@@ -225,7 +276,7 @@ fun FolderTreeView(
             modifier = Modifier
                 .fillMaxWidth()
                 .clickable { isTrashOpen = true },
-            color = StitchBackground
+            color = MaterialTheme.colorScheme.background
         ) {
             Row(
                 modifier = Modifier
@@ -236,7 +287,7 @@ fun FolderTreeView(
                 Icon(
                     Icons.Outlined.Delete,
                     contentDescription = "Trash",
-                    tint = StitchTextMuted,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(18.dp)
                 )
                 Spacer(modifier = Modifier.width(10.dp))
@@ -244,13 +295,13 @@ fun FolderTreeView(
                     text = "Trash Bin",
                     fontSize = 13.sp,
                     fontWeight = FontWeight.SemiBold,
-                    color = StitchTextMuted,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.weight(1f)
                 )
                 Icon(
                     Icons.AutoMirrored.Filled.KeyboardArrowRight,
                     contentDescription = null,
-                    tint = StitchTextMuted,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(16.dp)
                 )
             }
@@ -334,11 +385,11 @@ private fun TreeItemRow(
                 }
             },
         color = when {
-            isHoveredTarget -> StitchAccentCoral.copy(alpha = 0.25f)
-            isSelected -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
-            else -> MaterialTheme.colorScheme.surface
+            isHoveredTarget -> MaterialTheme.colorScheme.surfaceVariant
+            isSelected -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+            else -> Color.Transparent
         },
-        border = if (isHoveredTarget) BorderStroke(1.dp, StitchAccentCoral) else null,
+        border = if (isHoveredTarget) BorderStroke(1.dp, MaterialTheme.colorScheme.outline) else null,
         shape = RoundedCornerShape(4.dp)
     ) {
         Row(
@@ -367,7 +418,7 @@ private fun TreeItemRow(
                 Icon(
                     imageVector = if (item.isDir) Icons.Outlined.Folder else Icons.Outlined.Description,
                     contentDescription = null,
-                    tint = if (item.isDir) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(18.dp)
                 )
 
@@ -377,7 +428,7 @@ private fun TreeItemRow(
                     text = item.name,
                     fontSize = 13.sp,
                     fontWeight = if (item.isDir) FontWeight.SemiBold else FontWeight.Normal,
-                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                    color = if (isSelected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -498,7 +549,7 @@ fun MoveToDirectoryDialog(
                             Icon(
                                 Icons.Outlined.Folder,
                                 contentDescription = null,
-                                tint = if (isSelected) StitchAccentCoral else StitchTextMuted,
+                                tint = if (isSelected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.size(18.dp)
                             )
                             Spacer(modifier = Modifier.width(10.dp))
@@ -506,7 +557,7 @@ fun MoveToDirectoryDialog(
                                 text = if (dirPath.isEmpty()) "Root (/)" else dirPath,
                                 fontSize = 13.sp,
                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                color = Color.White
+                                color = MaterialTheme.colorScheme.onSurface
                             )
                         }
                     }
@@ -516,7 +567,7 @@ fun MoveToDirectoryDialog(
         confirmButton = {
             Button(
                 onClick = { onConfirmMove(selectedTarget) },
-                colors = ButtonDefaults.buttonColors(containerColor = StitchAccentCoral)
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary)
             ) {
                 Text("Move Here")
             }
@@ -560,7 +611,7 @@ fun TrashBinSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        containerColor = StitchBackground
+        containerColor = MaterialTheme.colorScheme.background
     ) {
         Column(modifier = Modifier.padding(horizontal = 16.dp).padding(bottom = 24.dp)) {
             Row(
@@ -572,11 +623,11 @@ fun TrashBinSheet(
                     text = if (trashPath.isEmpty()) "Trash Bin" else "Trash / $trashPath",
                     fontWeight = FontWeight.Bold,
                     fontSize = 18.sp,
-                    color = Color.White
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 if (trashPath.isNotEmpty()) {
                     TextButton(onClick = { trashPath = "" }) {
-                        Text("Up to root", color = StitchAccentCoral, fontSize = 13.sp)
+                        Text("Up to root", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
                     }
                 }
             }
@@ -676,8 +727,8 @@ private fun TrashItemRow(
         onClick = { if (item.isDir) onOpenFolder() },
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(8.dp),
-        color = StitchCardBg,
-        border = BorderStroke(1.dp, StitchBorder)
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
     ) {
         Row(
             modifier = Modifier
@@ -688,7 +739,7 @@ private fun TrashItemRow(
             Icon(
                 imageVector = if (item.isDir) Icons.Outlined.Folder else Icons.Outlined.Description,
                 contentDescription = null,
-                tint = if (item.isDir) StitchAccentCoral else StitchTextMuted,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(18.dp)
             )
             Spacer(modifier = Modifier.width(10.dp))
@@ -696,14 +747,14 @@ private fun TrashItemRow(
                 text = item.name,
                 fontSize = 13.sp,
                 fontWeight = if (item.isDir) FontWeight.SemiBold else FontWeight.Normal,
-                color = Color.White,
+                color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
             )
             if (!item.isDir) {
                 TextButton(onClick = onRestore) {
-                    Text("Restore", color = StitchAccentCoral, fontSize = 12.sp)
+                    Text("Restore", color = MaterialTheme.colorScheme.onSurface, fontSize = 12.sp)
                 }
             }
         }

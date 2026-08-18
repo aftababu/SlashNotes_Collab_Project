@@ -28,7 +28,7 @@ export function FolderPicker() {
   return (
     <div className="h-full flex flex-col bg-bg-secondary">
       {/* Draggable title bar area */}
-      <div className="h-10 shrink-0" data-tauri-drag-region />
+      <div className="h-5 shrink-0" data-tauri-drag-region />
 
       <div className="flex-1 flex items-center justify-center">
         <div className="text-center p-8 max-w-lg select-none">

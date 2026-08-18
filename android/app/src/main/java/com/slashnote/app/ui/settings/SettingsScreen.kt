@@ -80,11 +80,11 @@ fun SettingsScreen(
             TopAppBar(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Vault & Settings", fontWeight = FontWeight.Bold, fontSize = 20.sp, color = Color.White)
+                        Text("Vault & Settings", fontWeight = FontWeight.Bold, fontSize = 20.sp, color = MaterialTheme.colorScheme.onSurface)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = StitchBackground
+                    containerColor = MaterialTheme.colorScheme.background
                 )
             )
         },
@@ -94,7 +94,7 @@ fun SettingsScreen(
                 onSelectTab = onSelectBottomTab
             )
         },
-        containerColor = StitchBackground
+        containerColor = MaterialTheme.colorScheme.background
     ) { padding ->
         Column(
             modifier = Modifier
@@ -104,12 +104,12 @@ fun SettingsScreen(
             ScrollableTabRow(
                 selectedTabIndex = selectedTabIndex,
                 edgePadding = 16.dp,
-                containerColor = StitchBackground,
-                contentColor = StitchTextPrimary,
+                containerColor = MaterialTheme.colorScheme.background,
+                contentColor = MaterialTheme.colorScheme.onSurface,
                 indicator = { tabPositions ->
                     TabRowDefaults.SecondaryIndicator(
                         modifier = Modifier.tabIndicatorOffset(tabPositions[selectedTabIndex]),
-                        color = StitchAccentCoral,
+                        color = MaterialTheme.colorScheme.onBackground,
                         height = 3.dp
                     )
                 }
@@ -125,7 +125,7 @@ fun SettingsScreen(
                                 softWrap = false,
                                 fontSize = 14.sp,
                                 fontWeight = if (selectedTabIndex == index) FontWeight.Bold else FontWeight.Normal,
-                                color = if (selectedTabIndex == index) Color.White else StitchTextMuted
+                                color = if (selectedTabIndex == index) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     )
@@ -258,18 +258,18 @@ private fun GeneralStitchTab(
             text = "General Vault Configuration",
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
-            color = Color.White
+            color = MaterialTheme.colorScheme.onSurface
         )
 
         StitchCardContainer {
             // Field 1: Local Vault Path
             Column(modifier = Modifier.padding(16.dp)) {
-                Text("Local Vault Path", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 15.sp)
+                Text("Local Vault Path", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface, fontSize = 15.sp)
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     "The physical location of your markdown files on this device.",
                     fontSize = 12.sp,
-                    color = StitchTextMuted
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(modifier = Modifier.height(12.dp))
                 Row(
@@ -284,17 +284,18 @@ private fun GeneralStitchTab(
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(8.dp),
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedContainerColor = StitchBackground,
-                            unfocusedContainerColor = StitchBackground,
-                            focusedBorderColor = StitchBorder,
-                            unfocusedBorderColor = StitchBorder
+                            focusedContainerColor = MaterialTheme.colorScheme.background,
+                            unfocusedContainerColor = MaterialTheme.colorScheme.background,
+                            focusedBorderColor = MaterialTheme.colorScheme.outline,
+                            unfocusedBorderColor = MaterialTheme.colorScheme.outline
                         )
                     )
 
                     Button(
                         onClick = onPickCustomVaultPath,
                         shape = RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = StitchAccentCoral)
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary)
                     ) {
                         Icon(Icons.Outlined.FolderOpen, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(4.dp))
@@ -303,7 +304,7 @@ private fun GeneralStitchTab(
                 }
             }
 
-            HorizontalDivider(color = StitchBorder)
+            HorizontalDivider(color = MaterialTheme.colorScheme.outline)
 
             // Field 2: Show All Files Toggle
             Row(
@@ -314,12 +315,12 @@ private fun GeneralStitchTab(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("Show All Files", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 15.sp)
+                    Text("Show All Files", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface, fontSize = 15.sp)
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         "Display all file extensions alongside Markdown notes in the sidebar explorer",
                         fontSize = 12.sp,
-                        color = StitchTextMuted
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
                 Spacer(modifier = Modifier.width(12.dp))
@@ -327,36 +328,36 @@ private fun GeneralStitchTab(
                     checked = showAllFiles,
                     onCheckedChange = { onToggleShowAllFiles() },
                     colors = SwitchDefaults.colors(
-                        checkedThumbColor = Color.White,
-                        checkedTrackColor = StitchAccentCoral,
-                        uncheckedThumbColor = StitchTextMuted,
-                        uncheckedTrackColor = StitchBackground
+                        checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
+                        checkedTrackColor = MaterialTheme.colorScheme.primary,
+                        uncheckedThumbColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        uncheckedTrackColor = MaterialTheme.colorScheme.background
                     )
                 )
             }
 
-            HorizontalDivider(color = StitchBorder)
+            HorizontalDivider(color = MaterialTheme.colorScheme.outline)
 
             // Field 3: Default Note Template
             Column(modifier = Modifier.padding(16.dp)) {
-                Text("Default Note Template", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 15.sp)
+                Text("Default Note Template", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface, fontSize = 15.sp)
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     "Template applied to newly created notes in the root directory.",
                     fontSize = 12.sp,
-                    color = StitchTextMuted
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(modifier = Modifier.height(12.dp))
                 OutlinedTextField(
                     value = template,
                     onValueChange = onTemplateChange,
                     singleLine = true,
-                    trailingIcon = { Icon(Icons.Default.Edit, contentDescription = null, tint = StitchTextMuted, modifier = Modifier.size(16.dp)) },
+                    trailingIcon = { Icon(Icons.Default.Edit, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp)) },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(8.dp),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = StitchBackground,
-                        unfocusedContainerColor = StitchBackground,
+                        focusedContainerColor = MaterialTheme.colorScheme.background,
+                        unfocusedContainerColor = MaterialTheme.colorScheme.background,
                         focusedBorderColor = StitchBorder,
                         unfocusedBorderColor = StitchBorder
                     )
@@ -477,9 +478,9 @@ private fun StitchCardContainer(content: @Composable ColumnScope.() -> Unit) {
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .border(1.dp, StitchBorder, RoundedCornerShape(12.dp)),
+            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(12.dp)),
         shape = RoundedCornerShape(12.dp),
-        color = StitchCardBg
+        color = MaterialTheme.colorScheme.surfaceVariant
     ) {
         Column(content = content)
     }
@@ -490,17 +491,19 @@ private fun StitchChipTag(path: String, onRemove: () -> Unit) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(8.dp),
-        color = StitchBackground,
-        border = BorderStroke(1.dp, StitchBorder)
+        color = MaterialTheme.colorScheme.background,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(path, fontFamily = FontFamily.Monospace, fontSize = 13.sp, color = Color.White)
+            Text(path, fontFamily = FontFamily.Monospace, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface)
             IconButton(onClick = onRemove, modifier = Modifier.size(20.dp)) {
-                Icon(Icons.Default.Clear, contentDescription = "Remove", tint = StitchTextMuted, modifier = Modifier.size(14.dp))
+                Icon(Icons.Default.Clear, contentDescription = "Remove", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
             }
         }
     }
@@ -586,7 +589,8 @@ private fun GitSyncTab(
                     onClick = onSyncNow,
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(8.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = StitchAccentCoral, contentColor = Color.White)
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary)
                 ) {
                     Icon(Icons.Default.Refresh, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
@@ -606,7 +610,7 @@ private fun GitSyncTab(
                     is ConnectionState.Testing -> Text(
                         "Testing connection to remote...",
                         fontSize = 12.sp,
-                        color = StitchAccentCoral
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     is ConnectionState.Success -> {
                         val msg = (connectionState as ConnectionState.Success).message
@@ -622,8 +626,8 @@ private fun GitSyncTab(
                     onClick = { testConnection() },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(8.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = StitchCardBg, contentColor = StitchAccentCoral),
-                    border = BorderStroke(1.dp, StitchBorder)
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant, contentColor = MaterialTheme.colorScheme.onSurface),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
                 ) {
                     Icon(Icons.Default.CloudDone, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
@@ -654,9 +658,9 @@ private fun AppearanceTab(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
-        Text("Appearance & Theme", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White)
+        Text("Appearance & Theme", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
 
         StitchCardContainer {
             Row(
@@ -667,30 +671,38 @@ private fun AppearanceTab(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column {
-                    Text("Dark Theme Mode", fontWeight = FontWeight.SemiBold, color = Color.White)
-                    Text("Warm dark (#141010) visual palette", fontSize = 12.sp, color = StitchTextMuted)
+                    Text("Dark Theme Mode", fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
+                    Text("Warm charcoal dark visual palette", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Switch(
                     checked = isDarkTheme,
                     onCheckedChange = { onToggleTheme() },
-                    colors = SwitchDefaults.colors(checkedTrackColor = StitchAccentCoral)
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
+                        checkedTrackColor = MaterialTheme.colorScheme.primary,
+                        uncheckedThumbColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        uncheckedTrackColor = MaterialTheme.colorScheme.background
+                    )
                 )
             }
 
-            HorizontalDivider(color = StitchBorder)
+            HorizontalDivider(color = MaterialTheme.colorScheme.outline)
 
             Column(modifier = Modifier.padding(16.dp)) {
-                Text("Editor Font Size: ${fontSizeSp}sp", fontWeight = FontWeight.SemiBold, color = Color.White)
+                Text("Editor Font Size: ${fontSizeSp}sp", fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
                 Slider(
                     value = fontSizeSp.toFloat(),
                     onValueChange = { onFontSizeChange(it.toInt()) },
                     valueRange = 12f..24f,
                     steps = 12,
-                    colors = SliderDefaults.colors(thumbColor = StitchAccentCoral, activeTrackColor = StitchAccentCoral)
+                    colors = SliderDefaults.colors(
+                        thumbColor = MaterialTheme.colorScheme.primary,
+                        activeTrackColor = MaterialTheme.colorScheme.primary
+                    )
                 )
             }
 
-            HorizontalDivider(color = StitchBorder)
+            HorizontalDivider(color = MaterialTheme.colorScheme.outline)
 
             Row(
                 modifier = Modifier
@@ -700,13 +712,18 @@ private fun AppearanceTab(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column {
-                    Text("RTL Text Direction", fontWeight = FontWeight.SemiBold, color = Color.White)
-                    Text("Support Right-To-Left language layouts", fontSize = 12.sp, color = StitchTextMuted)
+                    Text("RTL Text Direction", fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
+                    Text("Support Right-To-Left language layouts", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Switch(
                     checked = isRtl,
                     onCheckedChange = { onToggleRtl() },
-                    colors = SwitchDefaults.colors(checkedTrackColor = StitchAccentCoral)
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
+                        checkedTrackColor = MaterialTheme.colorScheme.primary,
+                        uncheckedThumbColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        uncheckedTrackColor = MaterialTheme.colorScheme.background
+                    )
                 )
             }
         }
@@ -721,7 +738,7 @@ private fun ShortcutsTab() {
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text("Commands & Keyboard Shortcuts", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White)
+        Text("Commands & Keyboard Shortcuts", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
 
         ShortcutReferenceRow(trigger = "/", description = "Open Slash Command popup (H1-H3, Lists, Checkboxes, Tables, Math, Mermaid)")
         ShortcutReferenceRow(trigger = "[[", description = "Insert & autocomplete Wikilinks to existing vault notes")
@@ -742,19 +759,19 @@ private fun ShortcutReferenceRow(trigger: String, description: String) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Surface(
-                color = StitchAccentCoral,
+                color = MaterialTheme.colorScheme.primary,
                 shape = RoundedCornerShape(6.dp)
             ) {
                 Text(
                     text = trigger,
-                    color = Color.White,
+                    color = MaterialTheme.colorScheme.onPrimary,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                 )
             }
             Spacer(modifier = Modifier.width(12.dp))
-            Text(description, fontSize = 13.sp, color = StitchTextPrimary)
+            Text(description, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface)
         }
     }
 }

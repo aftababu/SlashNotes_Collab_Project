@@ -16,6 +16,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -26,7 +27,11 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -124,12 +129,13 @@ class MainActivity : ComponentActivity() {
         GitSyncWorker.schedulePeriodicSync(this)
 
         setContent {
-            var darkTheme by remember { mutableStateOf(true) }
+            val systemDark = isSystemInDarkTheme()
+            var darkTheme by remember { mutableStateOf(systemDark) }
 
             SlashNoteTheme(darkTheme = darkTheme) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
-                    color = StitchBackground
+                    color = MaterialTheme.colorScheme.background
                 ) {
                     SlashNoteApp(
                         isDarkTheme = darkTheme,
@@ -179,6 +185,8 @@ fun SlashNoteApp(
     var isCreateFolderOpen by remember { mutableStateOf(false) }
     var isCommandPaletteOpen by remember { mutableStateOf(false) }
     var isUnifiedSearchOpen by remember { mutableStateOf(false) }
+    var isSidebarSearchOpen by remember { mutableStateOf(false) }
+    var sidebarSearchQuery by remember { mutableStateOf("") }
     var itemToRename by remember { mutableStateOf<FolderItem?>(null) }
 
     var isFocusMode by remember { mutableStateOf(false) }
@@ -259,7 +267,7 @@ fun SlashNoteApp(
                     isSettingsOpen = false
                     selectedFilename = null
                 }
-                StitchBottomTab.SEARCH -> isUnifiedSearchOpen = true
+                StitchBottomTab.COMMAND_PALETTE -> isCommandPaletteOpen = true
                 StitchBottomTab.SETTINGS -> isSettingsOpen = true
             }
         }
@@ -273,13 +281,16 @@ fun SlashNoteApp(
             onSelectBottomTab = handleBottomTabSelect,
             onPickCustomVaultPath = { safFolderLauncher.launch(null) }
         )
-    } else if (selectedFilename == null) {
+    } else {
         ModalNavigationDrawer(
             drawerState = drawerState,
             drawerContent = {
                 ModalDrawerSheet(
-                    drawerContainerColor = StitchSurfaceSecondary,
-                    modifier = Modifier.width(320.dp)
+                    drawerContainerColor = MaterialTheme.colorScheme.surface,
+                    drawerShape = RoundedCornerShape(topEnd = 16.dp, bottomEnd = 16.dp),
+                    modifier = Modifier
+                        .width(300.dp)
+                        .clip(RoundedCornerShape(topEnd = 16.dp, bottomEnd = 16.dp))
                 ) {
                     val vaultName = remember(notesDir) { File(notesDir).name.ifEmpty { "Vault" } }
 
@@ -290,49 +301,93 @@ fun SlashNoteApp(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Outlined.Folder,
-                                contentDescription = null,
-                                tint = StitchAccentCoral,
-                                modifier = Modifier.size(24.dp)
+                        if (isSidebarSearchOpen) {
+                            androidx.compose.foundation.text.BasicTextField(
+                                value = sidebarSearchQuery,
+                                onValueChange = { sidebarSearchQuery = it },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp))
+                                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                                textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface),
+                                singleLine = true,
+                                decorationBox = { innerTextField ->
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(Icons.Default.Search, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Box(modifier = Modifier.weight(1f)) {
+                                            if (sidebarSearchQuery.isEmpty()) {
+                                                Text("Search notes...", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
+                                            }
+                                            innerTextField()
+                                        }
+                                        if (sidebarSearchQuery.isNotEmpty()) {
+                                            IconButton(onClick = { sidebarSearchQuery = "" }, modifier = Modifier.size(20.dp)) {
+                                                Icon(Icons.Default.Clear, contentDescription = "Clear", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
+                                            }
+                                        }
+                                    }
+                                }
                             )
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Text(
-                                text = vaultName,
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White
-                            )
-                        }
-
-                        Row {
-                            IconButton(
-                                onClick = { isCreateNoteOpen = true },
-                                modifier = Modifier.size(32.dp)
-                            ) {
-                                Icon(Icons.Default.Add, contentDescription = "New File", tint = Color.White, modifier = Modifier.size(20.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            TextButton(onClick = {
+                                isSidebarSearchOpen = false
+                                sidebarSearchQuery = ""
+                            }, contentPadding = PaddingValues(0.dp)) {
+                                Text("Cancel", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodyMedium)
                             }
-                            IconButton(
-                                onClick = { isCreateFolderOpen = true },
-                                modifier = Modifier.size(32.dp)
+                        } else {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.weight(1f)
                             ) {
-                                Icon(Icons.Outlined.FolderOpen, contentDescription = "New Folder", tint = Color.White, modifier = Modifier.size(20.dp))
+                                Icon(
+                                    imageVector = Icons.Outlined.Folder,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Text(
+                                    text = vaultName,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+
+                            Row {
+                                IconButton(
+                                    onClick = { isSidebarSearchOpen = true },
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Icon(Icons.Default.Search, contentDescription = "Search Notes", tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(20.dp))
+                                }
+                                IconButton(
+                                    onClick = { isCreateNoteOpen = true },
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Icon(Icons.Default.Add, contentDescription = "New File", tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(20.dp))
+                                }
+                                IconButton(
+                                    onClick = { isCreateFolderOpen = true },
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Icon(Icons.Outlined.FolderOpen, contentDescription = "New Folder", tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(20.dp))
+                                }
                             }
                         }
                     }
 
                     HorizontalDivider(color = StitchBorder)
 
-                    // Virtualized Nested Folder Tree View
+                    // Virtualized Nested Folder Tree View or Search Results
                     Box(modifier = Modifier.weight(1f)) {
                         FolderTreeView(
                             notesDir = notesDir,
                             currentRelativeDir = currentRelativeDir,
                             selectedFilename = selectedFilename,
+                            searchQuery = sidebarSearchQuery,
                             showAllFiles = showAllFilesState,
                             onNavigateDir = { currentRelativeDir = it },
                             onSelectNote = { relPath ->
@@ -360,7 +415,7 @@ fun SlashNoteApp(
                     // Split Footer Bar (Git Sync on Bottom-Left, Settings Gear on Bottom-Right)
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
-                        color = StitchBackground
+                        color = MaterialTheme.colorScheme.surface
                     ) {
                         Row(
                             modifier = Modifier
@@ -406,7 +461,7 @@ fun SlashNoteApp(
                                 Icon(
                                     imageVector = Icons.Default.Sync,
                                     contentDescription = "Sync Vault",
-                                    tint = StitchAccentCoral,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.size(18.dp)
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
@@ -430,7 +485,7 @@ fun SlashNoteApp(
                                 Icon(
                                     imageVector = Icons.Default.Settings,
                                     contentDescription = "Settings",
-                                    tint = Color.White
+                                    tint = MaterialTheme.colorScheme.onSurface
                                 )
                             }
                         }
@@ -438,14 +493,15 @@ fun SlashNoteApp(
                 }
             }
         ) {
-            Scaffold(
+            if (selectedFilename == null) {
+                Scaffold(
                 bottomBar = {
                     BottomNavBar(
                         selectedTab = activeBottomTab,
                         onSelectTab = handleBottomTabSelect
                     )
                 },
-                containerColor = StitchBackground
+                containerColor = MaterialTheme.colorScheme.background
             ) { padding ->
                 Box(
                     modifier = Modifier
@@ -518,10 +574,9 @@ fun SlashNoteApp(
                     )
                 }
             }
-        }
-    } else {
-        NoteEditorScreen(
-            notesDir = notesDir,
+        } else {
+            NoteEditorScreen(
+                notesDir = notesDir,
             filename = selectedFilename!!,
             headingAnchor = activeHeadingAnchor,
             isDarkTheme = isDarkTheme,
@@ -532,6 +587,7 @@ fun SlashNoteApp(
             onToggleFocusMode = { isFocusMode = !isFocusMode },
             onToggleSourceMode = { isSourceMode = !isSourceMode },
             onOpenCommandPalette = { isCommandPaletteOpen = true },
+            onOpenDrawer = { scope.launch { drawerState.open() } },
             onBack = {
                 if (noteBackStack.isNotEmpty()) {
                     val prevNote = noteBackStack.removeAt(noteBackStack.size - 1)
@@ -578,6 +634,8 @@ fun SlashNoteApp(
                 }
             }
         )
+        }
+    }
     }
 
     if (isUnifiedSearchOpen) {
@@ -722,14 +780,14 @@ fun SlashNoteApp(
                                 fontSize = 12.sp,
                                 lineHeight = 16.sp
                             ),
-                            color = Color.White
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                     }
                 }
             },
             confirmButton = {
                 TextButton(onClick = { syncErrorDialogText = null }) {
-                    Text("Close", color = Color.White)
+                    Text("Close", color = MaterialTheme.colorScheme.onSurface)
                 }
             },
             dismissButton = {
@@ -765,13 +823,20 @@ fun NoteListScreen(
 ) {
     var notes by remember { mutableStateOf<List<CachedNoteHeader>>(emptyList()) }
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     val refreshNotes = {
         scope.launch {
             val fetched = withContext(Dispatchers.IO) {
                 getCachedNoteHeaders(notesDir)
             }
-            notes = fetched.sortedByDescending { it.lastModifiedUnix }
+            val recentlyVisited = AppSettings.getRecentlyVisitedNotes(context)
+            notes = fetched.sortedWith(
+                compareByDescending<CachedNoteHeader> { note ->
+                    val visitIndex = recentlyVisited.indexOf(note.relativePath)
+                    if (visitIndex != -1) Long.MAX_VALUE - visitIndex else note.lastModifiedUnix
+                }.thenByDescending { it.lastModifiedUnix }
+            ).take(10)
         }
     }
 
@@ -779,41 +844,59 @@ fun NoteListScreen(
         val fetched = withContext(Dispatchers.IO) {
             getCachedNoteHeaders(notesDir)
         }
-        notes = fetched.sortedByDescending { it.lastModifiedUnix }
-    }
-
-    val context = LocalContext.current
-    val recentVisitedPaths = remember(notes) { AppSettings.getRecentlyVisitedNotes(context) }
-    val recentNotes = remember(notes, recentVisitedPaths) {
-        val map = notes.associateBy { it.relativePath }
-        recentVisitedPaths.mapNotNull { map[it] }.take(10)
+        val recentlyVisited = AppSettings.getRecentlyVisitedNotes(context)
+        notes = fetched.sortedWith(
+            compareByDescending<CachedNoteHeader> { note ->
+                val visitIndex = recentlyVisited.indexOf(note.relativePath)
+                if (visitIndex != -1) Long.MAX_VALUE - visitIndex else note.lastModifiedUnix
+            }.thenByDescending { it.lastModifiedUnix }
+        ).take(10)
     }
 
     Scaffold(
         topBar = {
-            TopAppBar(
+            CenterAlignedTopAppBar(
                 title = {
-                    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                        Text("SlashNote", fontWeight = FontWeight.Bold, fontSize = 20.sp, color = Color.White)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        androidx.compose.foundation.Image(
+                            painter = androidx.compose.ui.res.painterResource(id = com.slashnote.app.R.drawable.slashnote_logo),
+                            contentDescription = "Logo",
+                            modifier = Modifier.size(20.dp),
+                            alpha = 0.8f
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("SlashNote", fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, fontSize = 18.sp, color = MaterialTheme.colorScheme.onSurface)
                     }
                 },
                 navigationIcon = {
                     IconButton(onClick = onOpenDrawer) {
-                        Icon(Icons.Default.Menu, contentDescription = "Menu", tint = Color.White)
+                        Icon(Icons.Default.Menu, contentDescription = "Menu", tint = MaterialTheme.colorScheme.onSurface)
                     }
                 },
                 actions = {
+                    IconButton(onClick = onOpenVaultPicker) {
+                        Icon(Icons.Outlined.FolderOpen, contentDescription = "Open Vault", tint = MaterialTheme.colorScheme.onSurface)
+                    }
                     IconButton(onClick = onTriggerSync) {
-                        Icon(Icons.Default.Sync, contentDescription = "Sync Vault", tint = Color.White)
+                        Icon(Icons.Default.Sync, contentDescription = "Sync Vault", tint = MaterialTheme.colorScheme.onSurface)
                     }
                 },
                 windowInsets = WindowInsets(0, 0, 0, 0),
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = StitchBackground
+                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background
                 )
             )
         },
-        containerColor = StitchBackground
+        floatingActionButton = {
+            FloatingActionButton(
+                onClick = onCreateNote,
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary
+            ) {
+                Icon(Icons.Default.Add, contentDescription = "New Note")
+            }
+        },
+        containerColor = MaterialTheme.colorScheme.background
     ) { padding ->
         LazyColumn(
             modifier = Modifier
@@ -821,124 +904,89 @@ fun NoteListScreen(
                 .padding(padding)
                 .imePadding()
                 .padding(horizontal = 16.dp),
-            contentPadding = PaddingValues(top = 0.dp, bottom = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            contentPadding = PaddingValues(top = 8.dp, bottom = 80.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            // 1. Workspace Landing Hero Card
             item {
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp),
-                    color = StitchCardBg,
-                    border = BorderStroke(1.dp, StitchBorder)
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.padding(vertical = 24.dp, horizontal = 16.dp)
-                    ) {
-                        Surface(
-                            shape = RoundedCornerShape(16.dp),
-                            color = StitchBackground,
-                            border = BorderStroke(1.dp, StitchBorder),
-                            modifier = Modifier.size(64.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    Icons.Default.Edit,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(28.dp),
-                                    tint = StitchAccentCoral
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        Text(
-                            text = "Your Workspace",
-                            fontSize = 22.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
-                        )
-
-                        Spacer(modifier = Modifier.height(6.dp))
-
-                        Text(
-                            text = "Select a file to begin writing or create a new note.",
-                            fontSize = 12.sp,
-                            color = StitchTextMuted
-                        )
-
-                        Spacer(modifier = Modifier.height(20.dp))
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            Button(
-                                onClick = onCreateNote,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(42.dp),
-                                shape = RoundedCornerShape(8.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = StitchAccentCoral,
-                                    contentColor = Color.White
-                                )
-                            ) {
-                                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("NEW NOTE", fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                            }
-
-                            OutlinedButton(
-                                onClick = onOpenVaultPicker,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(42.dp),
-                                shape = RoundedCornerShape(8.dp),
-                                border = BorderStroke(1.dp, StitchBorder),
-                                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
-                            ) {
-                                Icon(Icons.Outlined.FolderOpen, contentDescription = null, tint = StitchTextMuted, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("OPEN VAULT", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.White)
-                            }
-                        }
-                    }
-                }
+                Text(
+                    text = "RECENT NOTES",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp, bottom = 4.dp)
+                )
             }
 
-            // 2. Recent Notes Section (Top 10 Recently Modified)
-            if (recentNotes.isNotEmpty()) {
+            if (notes.isEmpty()) {
                 item {
-                    Text(
-                        text = "RECENT NOTES",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = StitchTextMuted,
-                        modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
-                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 40.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "No notes found. Tap + to create a note.",
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
-
-                items(recentNotes, key = { it.relativePath }, contentType = { "note" }) { note ->
+            } else {
+                items(notes, key = { it.relativePath }, contentType = { "note" }) { note ->
                     val isPinned = pinnedIds.contains(note.relativePath)
-                    NoteCardItem(
-                        note = note,
-                        isPinned = isPinned,
-                        onClick = { onNoteSelected(note.relativePath) },
-                        onTogglePin = { onTogglePin(note.relativePath) },
-                        onDuplicate = { onDuplicate(note.relativePath) },
-                        onCopyPath = { onCopyPath(note.relativePath) },
-                        onDelete = {
-                            scope.launch {
-                                withContext(Dispatchers.IO) {
-                                    deleteNote(notesDir, note.relativePath)
+                    val dismissState = rememberSwipeToDismissBoxState(
+                        confirmValueChange = { dismissValue ->
+                            if (dismissValue == SwipeToDismissBoxValue.EndToStart) {
+                                scope.launch {
+                                    withContext(Dispatchers.IO) {
+                                        deleteNote(notesDir, note.relativePath)
+                                    }
+                                    refreshNotes()
                                 }
-                                refreshNotes()
+                                true
+                            } else {
+                                false
                             }
                         }
                     )
+
+                    SwipeToDismissBox(
+                        state = dismissState,
+                        enableDismissFromStartToEnd = false,
+                        backgroundContent = {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(MaterialTheme.colorScheme.errorContainer, shape = RoundedCornerShape(10.dp))
+                                    .padding(horizontal = 20.dp),
+                                contentAlignment = Alignment.CenterEnd
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Delete,
+                                    contentDescription = "Delete Note",
+                                    tint = MaterialTheme.colorScheme.onErrorContainer
+                                )
+                            }
+                        }
+                    ) {
+                        NoteCardItem(
+                            note = note,
+                            isPinned = isPinned,
+                            onClick = { onNoteSelected(note.relativePath) },
+                            onTogglePin = { onTogglePin(note.relativePath) },
+                            onDuplicate = { onDuplicate(note.relativePath) },
+                            onCopyPath = { onCopyPath(note.relativePath) },
+                            onDelete = {
+                                scope.launch {
+                                    withContext(Dispatchers.IO) {
+                                        deleteNote(notesDir, note.relativePath)
+                                    }
+                                    refreshNotes()
+                                }
+                            }
+                        )
+                    }
                 }
             }
         }
@@ -969,8 +1017,8 @@ fun NoteCardItem(
             .fillMaxWidth()
             .clickable { onClick() },
         shape = RoundedCornerShape(10.dp),
-        color = if (isPinned) StitchCardSelected else StitchCardBg,
-        border = BorderStroke(1.dp, StitchBorder)
+        color = if (isPinned) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f) else MaterialTheme.colorScheme.surfaceVariant,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
     ) {
         Row(
             modifier = Modifier
@@ -983,7 +1031,10 @@ fun NoteCardItem(
                 modifier = Modifier
                     .fillMaxHeight()
                     .width(3.dp)
-                    .background(StitchAccentCoral, shape = RoundedCornerShape(topStart = 10.dp, bottomStart = 10.dp))
+                    .background(
+                        if (isPinned) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline,
+                        shape = RoundedCornerShape(topStart = 10.dp, bottomStart = 10.dp)
+                    )
             )
 
             Row(
@@ -997,17 +1048,18 @@ fun NoteCardItem(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.weight(1f)
                 ) {
-                    // Rounded Icon Container Box (#2D2827)
+                    // Rounded Icon Container Box
                     Surface(
                         shape = RoundedCornerShape(8.dp),
-                        color = Color(0xFF2D2827),
+                        color = MaterialTheme.colorScheme.background,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                         modifier = Modifier.size(36.dp)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Icon(
                                 imageVector = Icons.Outlined.Description,
                                 contentDescription = null,
-                                tint = StitchAccentCoral,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.size(18.dp)
                             )
                         }
@@ -1022,7 +1074,7 @@ fun NoteCardItem(
                                 Icon(
                                     Icons.Default.Star,
                                     contentDescription = "Pinned",
-                                    tint = StitchAccentCoral,
+                                    tint = MaterialTheme.colorScheme.onSurface,
                                     modifier = Modifier.size(14.dp)
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
@@ -1032,7 +1084,7 @@ fun NoteCardItem(
                                 fontFamily = FontFamily.Monospace,
                                 fontWeight = FontWeight.SemiBold,
                                 fontSize = 13.sp,
-                                color = Color(0xFFFAFAF9),
+                                color = MaterialTheme.colorScheme.onSurface,
                                 maxLines = 1,
                                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                             )
@@ -1043,7 +1095,7 @@ fun NoteCardItem(
                         Text(
                             text = "${note.relativePath}  •  $formattedDate",
                             fontSize = 11.sp,
-                            color = Color(0xFFD3737C),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
                             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                         )
@@ -1127,12 +1179,13 @@ fun NoteEditorScreen(
     onToggleFocusMode: () -> Unit,
     onToggleSourceMode: () -> Unit,
     onOpenCommandPalette: () -> Unit,
+    onOpenDrawer: () -> Unit,
     onBack: () -> Unit,
     onNavigateToWikilink: (targetTitle: String) -> Unit
 ) {
     val scope = rememberCoroutineScope()
     var textFieldValue by remember(filename) { mutableStateOf(TextFieldValue(text = "")) }
-    val noteText by remember { derivedStateOf { textFieldValue.text } }
+    val noteText = textFieldValue.text
     var initialLoadedContent by remember(filename) { mutableStateOf<String?>(null) }
     var isDirty by remember(filename) { mutableStateOf(false) }
     var saveStatus by remember(filename) { mutableStateOf("Saved just now") }
@@ -1289,7 +1342,7 @@ fun NoteEditorScreen(
                                         style = MaterialTheme.typography.titleMedium,
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 15.sp,
-                                        color = Color.White,
+                                        color = MaterialTheme.colorScheme.onSurface,
                                         maxLines = 1,
                                         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                                         modifier = Modifier.weight(1f, fill = true)
@@ -1309,12 +1362,15 @@ fun NoteEditorScreen(
                         },
                         navigationIcon = {
                             IconButton(onClick = handleBack) {
-                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = MaterialTheme.colorScheme.onSurface)
                             }
                         },
                         actions = {
+                            IconButton(onClick = onOpenDrawer) {
+                                Icon(Icons.Default.Menu, contentDescription = "Open Drawer", tint = MaterialTheme.colorScheme.onSurface)
+                            }
                             IconButton(onClick = { isSearchOpen = !isSearchOpen }) {
-                                Icon(Icons.Default.Search, contentDescription = "Find in note", tint = Color.White)
+                                Icon(Icons.Default.Search, contentDescription = "Find in note", tint = MaterialTheme.colorScheme.onSurface)
                             }
 
                             // Single Edit / Preview Toggle Button
@@ -1328,22 +1384,22 @@ fun NoteEditorScreen(
                                 Icon(
                                     imageVector = if (isPreviewMode) Icons.Default.Edit else Icons.Outlined.Visibility,
                                     contentDescription = if (isPreviewMode) "Switch to Edit Mode" else "Switch to Preview Mode",
-                                    tint = if (isPreviewMode) Color.White else StitchAccentCoral
+                                    tint = if (isPreviewMode) MaterialTheme.colorScheme.onSurface else StitchAccentCoral
                                 )
                             }
 
                             IconButton(onClick = onOpenCommandPalette) {
-                                Icon(Icons.Default.MoreVert, contentDescription = "Command Palette", tint = Color.White)
+                                Icon(Icons.Default.MoreVert, contentDescription = "Command Palette", tint = MaterialTheme.colorScheme.onSurface)
                             }
                         },
                         colors = TopAppBarDefaults.topAppBarColors(
-                            containerColor = StitchBackground
+                            containerColor = MaterialTheme.colorScheme.background
                         )
                     )
                 }
             }
         },
-        containerColor = StitchBackground
+        containerColor = MaterialTheme.colorScheme.background
     ) { padding ->
         Box(
             modifier = Modifier
@@ -1362,12 +1418,22 @@ fun NoteEditorScreen(
                     onWikilinkClick = { title -> onNavigateToWikilink(title) }
                 )
             } else {
+                val flingInterceptor = remember {
+                    object : NestedScrollConnection {
+                        // Pass velocity directly to parent, preventing child from consuming it
+                        override suspend fun onPreFling(available: Velocity): Velocity {
+                            return Velocity.Zero
+                        }
+                    }
+                }
+
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
                         .navigationBarsPadding()
                         .imePadding()
                         .verticalScroll(editorScrollState)
+                        .nestedScroll(flingInterceptor)
                         .padding(horizontal = 6.dp, vertical = 4.dp)
                 ) {
                     BasicTextField(
@@ -1388,19 +1454,13 @@ fun NoteEditorScreen(
                         },
                         readOnly = false,
                         textStyle = TextStyle(
-                            color = Color.White,
+                            color = MaterialTheme.colorScheme.onSurface,
                             fontSize = 15.sp,
                             fontFamily = FontFamily.Default,
                             lineHeight = 22.sp
                         ),
                         cursorBrush = SolidColor(StitchAccentCoral),
-                        visualTransformation = remember(isSourceMode, isDarkTheme, spanCache) {
-                            if (isSourceMode) {
-                                androidx.compose.ui.text.input.VisualTransformation.None
-                            } else {
-                                MarkdownVisualTransformation(isDarkTheme = isDarkTheme, cache = spanCache)
-                            }
-                        },
+                        visualTransformation = androidx.compose.ui.text.input.VisualTransformation.None,
                         modifier = Modifier.fillMaxWidth(),
                         maxLines = Int.MAX_VALUE,
                         singleLine = false,
@@ -1432,7 +1492,7 @@ fun NoteEditorScreen(
                         isSlashMenuVisible = true
                     },
                     containerColor = StitchAccentCoral,
-                    contentColor = Color.White,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
                     shape = RoundedCornerShape(16.dp),
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
@@ -1526,7 +1586,7 @@ fun SlashCommandPopup(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Slash Commands", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall, color = Color.White)
+                Text("Slash Commands", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
                 IconButton(onClick = onDismiss, modifier = Modifier.size(24.dp)) {
                     Icon(Icons.Default.Clear, contentDescription = "Close", tint = StitchTextMuted)
                 }
@@ -1556,7 +1616,7 @@ fun SlashCommandPopup(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start) {
-                        Text(name, color = Color.White)
+                        Text(name, color = MaterialTheme.colorScheme.onSurface)
                     }
                 }
             }
@@ -1587,7 +1647,7 @@ fun WikilinkAutocompletePopup(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Insert Wikilink [[...]]", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall, color = Color.White)
+                Text("Insert Wikilink [[...]]", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
                 IconButton(onClick = onDismiss, modifier = Modifier.size(24.dp)) {
                     Icon(Icons.Default.Clear, contentDescription = "Close", tint = StitchTextMuted)
                 }

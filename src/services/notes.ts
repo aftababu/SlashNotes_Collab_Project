@@ -45,6 +45,10 @@ export async function renameFolder(oldPath: string, newName: string): Promise<vo
   return invoke("rename_folder", { oldPath, newName });
 }
 
+export async function renameNote(oldId: string, newName: string): Promise<string> {
+  return invoke("rename_note", { oldId, newName });
+}
+
 export async function moveNote(id: string, targetFolder: string): Promise<string> {
   return invoke("move_note", { id, targetFolder });
 }

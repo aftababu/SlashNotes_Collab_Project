@@ -2,27 +2,24 @@ package com.slashnote.app.ui.components
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.Terminal
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.slashnote.app.ui.theme.StitchAccentCoral
-import com.slashnote.app.ui.theme.StitchBackground
-import com.slashnote.app.ui.theme.StitchBorder
-import com.slashnote.app.ui.theme.StitchTextMuted
 
 enum class StitchBottomTab {
     EDITOR,
-    SEARCH,
+    COMMAND_PALETTE,
     SETTINGS
 }
 
@@ -32,14 +29,14 @@ fun BottomNavBar(
     onSelectTab: (StitchBottomTab) -> Unit
 ) {
     Surface(
-        color = StitchBackground,
+        color = MaterialTheme.colorScheme.background,
         modifier = Modifier
             .fillMaxWidth()
             .navigationBarsPadding(),
         tonalElevation = 12.dp
     ) {
         Column {
-            HorizontalDivider(color = StitchBorder, thickness = 1.dp)
+            HorizontalDivider(color = MaterialTheme.colorScheme.outline, thickness = 1.dp)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -51,21 +48,24 @@ fun BottomNavBar(
                 BottomNavItem(
                     isSelected = selectedTab == StitchBottomTab.EDITOR,
                     label = "Editor",
-                    icon = Icons.Default.Edit,
+                    activeIcon = Icons.Filled.Edit,
+                    inactiveIcon = Icons.Outlined.Edit,
                     contentDescription = "Editor",
                     onClick = { onSelectTab(StitchBottomTab.EDITOR) }
                 )
                 BottomNavItem(
-                    isSelected = selectedTab == StitchBottomTab.SEARCH,
-                    label = "Search",
-                    icon = Icons.Default.Search,
-                    contentDescription = "Search",
-                    onClick = { onSelectTab(StitchBottomTab.SEARCH) }
+                    isSelected = selectedTab == StitchBottomTab.COMMAND_PALETTE,
+                    label = "Cmds",
+                    activeIcon = Icons.Filled.Terminal,
+                    inactiveIcon = Icons.Outlined.Terminal,
+                    contentDescription = "Command Palette",
+                    onClick = { onSelectTab(StitchBottomTab.COMMAND_PALETTE) }
                 )
                 BottomNavItem(
                     isSelected = selectedTab == StitchBottomTab.SETTINGS,
                     label = "Settings",
-                    icon = Icons.Default.Settings,
+                    activeIcon = Icons.Filled.Settings,
+                    inactiveIcon = Icons.Outlined.Settings,
                     contentDescription = "Settings",
                     onClick = { onSelectTab(StitchBottomTab.SETTINGS) }
                 )
@@ -78,10 +78,14 @@ fun BottomNavBar(
 private fun BottomNavItem(
     isSelected: Boolean,
     label: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    activeIcon: androidx.compose.ui.graphics.vector.ImageVector,
+    inactiveIcon: androidx.compose.ui.graphics.vector.ImageVector,
     contentDescription: String,
     onClick: () -> Unit
 ) {
+    val activeColor = MaterialTheme.colorScheme.onSurface
+    val inactiveColor = MaterialTheme.colorScheme.onSurfaceVariant
+
     Column(
         modifier = Modifier
             .clickable(onClick = onClick)
@@ -90,17 +94,17 @@ private fun BottomNavItem(
         verticalArrangement = Arrangement.Center
     ) {
         Icon(
-            imageVector = icon,
+            imageVector = if (isSelected) activeIcon else inactiveIcon,
             contentDescription = contentDescription,
-            tint = if (isSelected) StitchAccentCoral else StitchTextMuted,
+            tint = if (isSelected) activeColor else inactiveColor,
             modifier = Modifier.size(20.dp)
         )
         Spacer(modifier = Modifier.height(2.dp))
         Text(
             text = label,
             fontSize = 11.sp,
-            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-            color = if (isSelected) StitchAccentCoral else StitchTextMuted
+            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
+            color = if (isSelected) activeColor else inactiveColor
         )
     }
 }

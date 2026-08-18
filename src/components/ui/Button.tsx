@@ -3,7 +3,7 @@ import { cn } from "../../lib/utils";
 
 export interface ButtonProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: "primary" | "default" | "secondary" | "ghost" | "outline" | "link";
+  variant?: "primary" | "default" | "secondary" | "ghost" | "outline" | "link" | "segmented";
   size?: "xs" | "sm" | "md" | "lg" | "xl";
 }
 
@@ -17,6 +17,7 @@ const buttonSizes = {
 
 const buttonVariants = {
   primary: "bg-accent text-text-inverse hover:bg-accent/90 rounded-md",
+  segmented: "bg-bg-emphasis/70 border border-border text-text shadow-2xs rounded-md font-medium",
   default: "bg-bg-muted text-text hover:bg-bg-emphasis rounded-md",
   secondary: "bg-bg-muted text-text hover:bg-bg-emphasis rounded-md",
   ghost: "hover:bg-bg-muted text-text-muted hover:text-text rounded-md",

@@ -311,9 +311,7 @@ export function Sidebar({ onOpenSettings }: SidebarProps) {
       onDragCancel={() => setDragLabel(null)}
     >
     <div className="relative w-64 h-full bg-bg-secondary border-r border-border flex flex-col select-none">
-      {/* Drag region */}
-      <div className="h-11 shrink-0" data-tauri-drag-region></div>
-      <div className="flex items-center justify-between pl-4 pr-3 pb-2 border-b border-border shrink-0">
+      <div className="flex items-center justify-between pl-4 pr-3 pb-2 pt-2 border-b border-border shrink-0">
         <div className="flex items-center gap-1">
           <div className="font-medium text-base">Notes</div>
           <div className="text-text-muted font-medium text-2xs min-w-4.75 h-4.75 flex items-center justify-center px-1 bg-bg-muted rounded-sm mt-0.5 pt-px">

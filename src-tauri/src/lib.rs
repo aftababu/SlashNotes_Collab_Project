@@ -827,7 +827,15 @@ fn initialize_notes_folder(app: &AppHandle, path_buf: &PathBuf, state: &AppState
     let _ = std::fs::remove_file(&write_test_path);
 
     // Load per-folder settings (starts fresh with defaults if none exist)
-    let settings = load_settings(&normalized_path);
+    let mut settings = load_settings(&normalized_path);
+
+    // Auto-detect if selected notes folder contains a git repository
+    if settings.git_enabled.is_none() || settings.git_enabled == Some(false) {
+        if git::is_git_repo(path_buf) {
+            settings.git_enabled = Some(true);
+            let _ = save_settings(&normalized_path, &settings);
+        }
+    }
 
     // Update app config
     {
@@ -928,7 +936,7 @@ async fn list_notes(state: State<'_, AppState>) -> Result<Vec<NoteMetadata>, Str
                         .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
                         .map(|d| d.as_secs() as i64)
                         .unwrap_or(0);
-                    let title = extract_title(&content);
+                    let title = extract_title_from_id(&id);
                     let preview = generate_preview(&content);
                     results.push((id, title, preview, modified));
                 }
@@ -1536,6 +1544,78 @@ async fn rename_folder(
 }
 
 #[tauri::command]
+async fn rename_note(
+    old_id: String,
+    new_name: String,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let folder = {
+        let app_config = state.app_config.read().expect("app_config read lock");
+        app_config
+            .notes_folder
+            .clone()
+            .ok_or("Notes folder not set")?
+    };
+
+    let sanitized_name = new_name
+        .replace(['/', '\\', ':', '*', '?', '"', '<', '>', '|'], "-")
+        .trim()
+        .to_string();
+    if sanitized_name.is_empty() {
+        return Err("Note name cannot be empty".to_string());
+    }
+
+    let folder_root = PathBuf::from(&folder);
+    let old_path = folder_root.join(&old_id).with_extension("md");
+    if !old_path.exists() {
+        return Err("Original note not found".to_string());
+    }
+
+    let new_file_name = format!("{}.md", sanitized_name);
+    let new_path = old_path.with_file_name(&new_file_name);
+
+    if new_path.exists() {
+        return Err("A note with that name already exists".to_string());
+    }
+
+    tokio::fs::rename(&old_path, &new_path)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let parent_dir = std::path::Path::new(&old_id).parent().unwrap_or(std::path::Path::new(""));
+    let new_id = if parent_dir.as_os_str().is_empty() {
+        sanitized_name.clone()
+    } else {
+        format!("{}/{}", parent_dir.to_string_lossy(), sanitized_name).replace('\\', "/")
+    };
+
+    // Update pinned note IDs in settings
+    {
+        let mut settings = state.settings.write().expect("settings write lock");
+        if let Some(pinned) = &mut settings.pinned_note_ids {
+            if let Some(pos) = pinned.iter().position(|x| x == &old_id) {
+                pinned[pos] = new_id.clone();
+                let _ = save_settings(&folder, &settings);
+            }
+        }
+    }
+
+    // Rebuild search index for affected note
+    {
+        let index = state.search_index.lock().expect("search index mutex");
+        if let Some(ref search_index) = *index {
+            let ignored_dirs = {
+                let settings = state.settings.read().expect("settings read lock");
+                get_effective_ignored_dirs(&settings)
+            };
+            let _ = search_index.rebuild_index(&folder_root, &ignored_dirs);
+        }
+    }
+
+    Ok(new_id)
+}
+
+#[tauri::command]
 async fn move_note(
     id: String,
     target_folder: String,
@@ -1774,8 +1854,15 @@ fn update_git_enabled(
         let app_config = state.app_config.read().expect("app_config read lock");
         let folder = app_config.notes_folder.clone().ok_or("Notes folder not set")?;
 
-        if folder != expected_folder {
-            return Err("Notes folder changed".to_string());
+        let norm_folder = normalize_notes_folder_path(&folder).unwrap_or_else(|_| PathBuf::from(&folder));
+        let norm_expected = normalize_notes_folder_path(&expected_folder).unwrap_or_else(|_| PathBuf::from(&expected_folder));
+
+        if norm_folder != norm_expected && folder != expected_folder {
+            if let (Ok(p1), Ok(p2)) = (norm_folder.canonicalize(), norm_expected.canonicalize()) {
+                if p1 != p2 {
+                    return Err("Notes folder changed".to_string());
+                }
+            }
         }
 
         folder
@@ -2591,7 +2678,49 @@ async fn git_push(state: State<'_, AppState>) -> Result<git::GitResult, String> 
     match folder {
         Some(path) => {
             tauri::async_runtime::spawn_blocking(move || {
-                git::push(&PathBuf::from(path))
+                git::push_dual_branch(&PathBuf::from(path), false)
+            })
+            .await
+            .map_err(|e| e.to_string())
+        }
+        None => Ok(git::GitResult {
+            success: false,
+            message: None,
+            error: Some("Notes folder not set".to_string()),
+        }),
+    }
+}
+
+#[tauri::command]
+async fn git_check_vault_signature(state: State<'_, AppState>) -> Result<git::VaultSignatureCheck, String> {
+    let folder = {
+        let app_config = state.app_config.read().expect("app_config read lock");
+        app_config.notes_folder.clone()
+    };
+
+    match folder {
+        Some(path) => {
+            tauri::async_runtime::spawn_blocking(move || {
+                git::check_vault_signature(&PathBuf::from(path))
+            })
+            .await
+            .map_err(|e| e.to_string())
+        }
+        None => Ok(git::VaultSignatureCheck::default()),
+    }
+}
+
+#[tauri::command]
+async fn git_push_dual_branch(force: bool, state: State<'_, AppState>) -> Result<git::GitResult, String> {
+    let folder = {
+        let app_config = state.app_config.read().expect("app_config read lock");
+        app_config.notes_folder.clone()
+    };
+
+    match folder {
+        Some(path) => {
+            tauri::async_runtime::spawn_blocking(move || {
+                git::push_dual_branch(&PathBuf::from(path), force)
             })
             .await
             .map_err(|e| e.to_string())
@@ -3769,6 +3898,11 @@ pub fn run() {
             };
 
             if let Some(main_window) = app.get_webview_window("main") {
+                #[cfg(any(target_os = "windows", target_os = "linux"))]
+                {
+                    let _ = main_window.set_decorations(false);
+                }
+
                 let has_notes_folder = app
                     .state::<AppState>()
                     .app_config
@@ -3818,6 +3952,7 @@ pub fn run() {
             create_folder,
             delete_folder,
             rename_folder,
+            rename_note,
             move_note,
             move_folder,
             get_settings,
@@ -3840,6 +3975,8 @@ pub fn run() {
             git_init_repo,
             git_commit,
             git_push,
+            git_check_vault_signature,
+            git_push_dual_branch,
             git_fetch,
             git_pull,
             git_add_remote,

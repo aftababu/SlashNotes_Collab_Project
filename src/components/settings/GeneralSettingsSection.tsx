@@ -70,6 +70,14 @@ export function GeneralSettingsSection() {
   const [isEditingRemote, setIsEditingRemote] = useState(false);
   const [noteTemplate, setNoteTemplate] = useState<string>("Untitled");
   const [previewNoteName, setPreviewNoteName] = useState<string>("Untitled");
+
+  // Prepopulate remoteUrl state from git status on mount/status update
+  useEffect(() => {
+    if (status?.remoteUrl) {
+      setRemoteUrl(status.remoteUrl);
+    }
+  }, [status?.remoteUrl]);
+
   // Load template from settings on mount
   useEffect(() => {
     const loadTemplate = async () => {
@@ -318,7 +326,7 @@ export function GeneralSettingsSection() {
           <div className="flex gap-1 p-1 rounded-[10px] border border-border">
             <Button
               onClick={() => handleToggleGitEnabled(false)}
-              variant={!gitEnabled ? "primary" : "ghost"}
+              variant={!gitEnabled ? "segmented" : "ghost"}
               size="xs"
               disabled={isUpdatingGitEnabled}
             >
@@ -326,7 +334,7 @@ export function GeneralSettingsSection() {
             </Button>
             <Button
               onClick={() => handleToggleGitEnabled(true)}
-              variant={gitEnabled ? "primary" : "ghost"}
+              variant={gitEnabled ? "segmented" : "ghost"}
               size="xs"
               disabled={isUpdatingGitEnabled}
             >
@@ -355,19 +363,89 @@ export function GeneralSettingsSection() {
           </div>
         ) : !status?.isRepo ? (
           <div className="bg-bg-secondary rounded-[10px] border border-border p-4">
-            <p className="text-sm text-text-muted mb-2">
+            <p className="text-sm text-text-muted mb-4">
               Enable Git to track changes to your notes with version control.
-              Your changes will be tracked automatically and you can commit and
-              push from the sidebar.
+              Initialize a new repository or connect an existing remote URL.
             </p>
-            <Button
-              onClick={initRepo}
-              disabled={isLoading}
-              variant="outline"
-              size="md"
-            >
-              Initialize Git Repository
-            </Button>
+            {showRemoteInput ? (
+              <div className="space-y-2">
+                <Input
+                  type="text"
+                  value={remoteUrl}
+                  onChange={(e) => setRemoteUrl(e.target.value)}
+                  onKeyDown={async (e) => {
+                    if (e.key === "Enter") {
+                      if (!remoteUrl.trim() || isAddingRemote || isLoading) return;
+                      const inited = await initRepo();
+                      if (inited) {
+                        const success = await addRemote(remoteUrl.trim());
+                        if (success) {
+                          setRemoteUrl("");
+                          setShowRemoteInput(false);
+                        }
+                      }
+                    }
+                    if (e.key === "Escape") handleCancelRemote();
+                  }}
+                  placeholder="https://github.com/user/repo.git"
+                  autoFocus
+                />
+                <div className="flex gap-2">
+                  <Button
+                    onClick={async () => {
+                      if (!remoteUrl.trim() || isAddingRemote || isLoading) return;
+                      const inited = await initRepo();
+                      if (inited) {
+                        const success = await addRemote(remoteUrl.trim());
+                        if (success) {
+                          setRemoteUrl("");
+                          setShowRemoteInput(false);
+                        }
+                      }
+                    }}
+                    disabled={isAddingRemote || isLoading || !remoteUrl.trim()}
+                    size="sm"
+                  >
+                    {isAddingRemote || isLoading ? (
+                      <>
+                        <SpinnerIcon className="w-3 h-3 mr-2 animate-spin" />
+                        Connecting...
+                      </>
+                    ) : (
+                      "Connect & Initialize"
+                    )}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleCancelRemote}
+                    disabled={isAddingRemote || isLoading}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <Button
+                  onClick={initRepo}
+                  disabled={isLoading}
+                  variant="outline"
+                  size="md"
+                >
+                  Initialize Repository
+                </Button>
+                <Button
+                  onClick={() => setShowRemoteInput(true)}
+                  disabled={isLoading}
+                  variant="ghost"
+                  size="md"
+                >
+                  <CloudPlusIcon className="w-4 h-4 stroke-[1.7] mr-1.5" />
+                  Connect Remote
+                </Button>
+              </div>
+            )}
           </div>
         ) : (
           <>

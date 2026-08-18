@@ -1,38 +1,54 @@
 package com.slashnote.app.ui.theme
 
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
-// Stitch Dark Theme Palette (From Design Mockups)
-val StitchBackground = Color(0xFF141010)
-val StitchSurfaceSecondary = Color(0xFF1A1414)
-val StitchCardBg = Color(0xFF1D1616)
-val StitchCardSelected = Color(0xFF281F1F)
-val StitchTextPrimary = Color(0xFFFAFAF9)
-val StitchTextMuted = Color(0xFFA69898)
-val StitchBorder = Color(0xFF2D2323)
-val StitchAccentCoral = Color(0xFFFD5E70)
-val StitchAccentCoralLight = Color(0xFFFF6E7F)
-val StitchCodeHighlight = Color(0xFFFD5E70)
-val StitchCodeBg = Color(0xFF241C1C)
+// Dark Mode Palette (Charcoal Zinc)
+val DarkBackground = Color(0xFF141416)
+val DarkSurface = Color(0xFF1C1C1F)
+val DarkSurfaceElevated = Color(0xFF27272A)
+val DarkBorder = Color(0xFF2E2E33)
+val DarkTextPrimary = Color(0xFFEDEDED)
+val DarkTextSecondary = Color(0xFFA1A1AA)
 
-// Backward compatible aliases
-val DarkBackground = StitchBackground
-val DarkSurfaceSecondary = StitchSurfaceSecondary
-val DarkSurfaceCard = StitchCardBg
-val DarkTextPrimary = StitchTextPrimary
-val DarkTextMuted = StitchTextMuted
-val DarkBorder = StitchBorder
-val DarkAccent = StitchAccentCoral
-val DarkCodeHighlight = StitchCodeHighlight
-val DarkCodeBg = StitchCodeBg
+// Light Mode Palette (Warm Minimalist)
+val LightBackground = Color(0xFFF7F7F8)
+val LightSurface = Color(0xFFFFFFFF)
+val LightSurfaceElevated = Color(0xFFECECEE)
+val LightBorder = Color(0xFFE5E5E7)
+val LightTextPrimary = Color(0xFF111827)
+val LightTextSecondary = Color(0xFF6B7280)
 
-// Light Theme Palette
-val LightBackground = Color(0xFFFFFFFF)
-val LightSurfaceSecondary = Color(0xFFFAFAF9)
-val LightSurfaceCard = Color(0xFFF5F5F4)
-val LightTextPrimary = Color(0xFF1C1917)
-val LightTextMuted = Color(0xFF78716C)
-val LightBorder = Color(0xFFE5E5E0)
-val LightAccent = StitchAccentCoral
-val LightCodeHighlight = StitchAccentCoral
-val LightCodeBg = Color(0x0F1C1917)
+// Aliases for backward compatibility
+val DarkSurfaceSecondary = DarkBackground
+val DarkSurfaceCard = DarkSurface
+val DarkTextMuted = DarkTextSecondary
+val DarkButtonBg = DarkSurfaceElevated
+val DarkButtonBorder = Color(0xFF3F3F46)
+val DarkButtonText = DarkTextPrimary
+val DarkCodeHighlight = DarkTextPrimary
+val DarkCodeBg = Color(0xFF242429)
+
+val LightSurfaceSecondary = LightBackground
+val LightSurfaceCard = LightSurface
+val LightTextMuted = LightTextSecondary
+val LightButtonBg = LightTextPrimary
+val LightButtonBorder = LightBorder
+val LightButtonText = Color(0xFFFFFFFF)
+val LightCodeHighlight = LightTextPrimary
+val LightCodeBg = Color(0x0F18181B)
+
+val StitchBackground = DarkBackground
+val StitchSurfaceSecondary = DarkBackground
+val StitchCardBg = DarkSurface
+val StitchCardSelected = Color(0xFF26262B)
+val StitchTextPrimary = DarkTextPrimary
+val StitchTextMuted = DarkTextSecondary
+val StitchBorder = DarkBorder
+val StitchAccentCoral = DarkTextPrimary
+val StitchAccentCoralLight = Color(0xFFFAFAF9)
+val StitchCodeHighlight = DarkCodeHighlight
+val StitchCodeBg = DarkCodeBg
+val DarkAccent = DarkSurfaceElevated
+val LightAccent = LightTextPrimary

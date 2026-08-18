@@ -127,7 +127,7 @@ export function AppearanceSettingsSection() {
             <Button
               key={mode}
               onClick={() => setTheme(mode)}
-              variant={theme === mode ? "primary" : "ghost"}
+              variant={theme === mode ? "segmented" : "ghost"}
               size="md"
               className="flex-1"
             >

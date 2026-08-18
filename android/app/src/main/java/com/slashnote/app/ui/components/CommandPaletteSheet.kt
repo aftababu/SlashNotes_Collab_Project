@@ -176,9 +176,9 @@ fun CommandPaletteSheet(
                                         .padding(horizontal = 12.dp, vertical = 10.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Icon(Icons.Default.Edit, contentDescription = null, tint = StitchAccentCoral, modifier = Modifier.size(18.dp))
+                                    Icon(Icons.Default.Edit, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
                                     Spacer(modifier = Modifier.width(12.dp))
-                                    Text(note.title, fontSize = 14.sp, color = Color.White, fontWeight = FontWeight.Medium)
+                                    Text(note.title, fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Medium)
                                 }
                             }
                         }
@@ -238,22 +238,23 @@ private fun StitchCommandActionCard(
                     .padding(horizontal = 12.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Pink icon container box
+                // Icon container box
                 Surface(
                     shape = RoundedCornerShape(6.dp),
-                    color = Color(0xFF332325),
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                     modifier = Modifier.size(36.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        Icon(action.icon, contentDescription = null, tint = StitchAccentCoral, modifier = Modifier.size(18.dp))
+                        Icon(action.icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
                     }
                 }
 
                 Spacer(modifier = Modifier.width(12.dp))
 
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(action.title, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                    Text(action.description, fontSize = 12.sp, color = StitchTextMuted, maxLines = 1)
+                    Text(action.title, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                    Text(action.description, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                 }
             }
         }
