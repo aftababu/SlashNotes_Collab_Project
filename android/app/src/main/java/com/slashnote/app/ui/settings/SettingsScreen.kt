@@ -11,6 +11,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.FolderOpen
@@ -46,7 +47,7 @@ fun SettingsScreen(
     notesDir: String,
     isDarkTheme: Boolean,
     onToggleTheme: () -> Unit,
-    onSelectBottomTab: (StitchBottomTab) -> Unit,
+    onBack: () -> Unit,
     onPickCustomVaultPath: () -> Unit
 ) {
     val context = LocalContext.current
@@ -83,15 +84,14 @@ fun SettingsScreen(
                         Text("Vault & Settings", fontWeight = FontWeight.Bold, fontSize = 20.sp, color = MaterialTheme.colorScheme.onSurface)
                     }
                 },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = MaterialTheme.colorScheme.onSurface)
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background
                 )
-            )
-        },
-        bottomBar = {
-            BottomNavBar(
-                selectedTab = StitchBottomTab.SETTINGS,
-                onSelectTab = onSelectBottomTab
             )
         },
         containerColor = MaterialTheme.colorScheme.background

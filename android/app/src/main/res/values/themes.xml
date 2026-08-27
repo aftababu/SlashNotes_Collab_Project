@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Base App Theme (Dark Theme) -->
+    <style name="Theme.SlashNote" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">#1E1E2E</item>
+        <item name="android:statusBarColor">#1E1E2E</item>
+        <item name="android:navigationBarColor">#1E1E2E</item>
+    </style>
+
+    <!-- SplashScreen Theme for Android 11 and below -->
+    <style name="Theme.SlashNote.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">#1E1E2E</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_splash_branding</item>
+        <item name="windowSplashScreenIconBackgroundColor">@android:color/transparent</item>
+        <item name="postSplashScreenTheme">@style/Theme.SlashNote</item>
+    </style>
+</resources>

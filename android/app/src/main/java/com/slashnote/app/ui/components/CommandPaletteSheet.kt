@@ -2,26 +2,22 @@ package com.slashnote.app.ui.components
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.FilterCenterFocus
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.slashnote.app.ui.theme.*
-import uniffi.slash_notes_core.NoteHeader
-import androidx.compose.material.icons.outlined.FilterCenterFocus
-import androidx.compose.material.icons.outlined.FolderOpen
+import com.slashnote.app.ui.theme.StitchAccentCoral
 
 data class CommandPaletteAction(
     val title: String,
@@ -34,49 +30,73 @@ data class CommandPaletteAction(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CommandPaletteSheet(
-    notes: List<NoteHeader>,
     onDismiss: () -> Unit,
-    onSelectNote: (filename: String) -> Unit,
-    onCreateNote: () -> Unit,
-    onCreateFolder: () -> Unit,
-    onTriggerGitSync: () -> Unit,
-    onToggleTheme: () -> Unit,
     onToggleFocusMode: () -> Unit,
-    onToggleSourceMode: () -> Unit,
+    onExportPdf: () -> Unit,
+    onShareNote: () -> Unit,
+    onTriggerGitSync: () -> Unit,
     onOpenSettings: () -> Unit
 ) {
     var query by remember { mutableStateOf("") }
-    val baseActions = listOf(
-    CommandPaletteAction("Create New Note", "Initialize a blank markdown file in the current vault", Icons.Default.Add, "ACTIONS", onCreateNote),
-    CommandPaletteAction("Git Sync Now", "Commit and push current vault changes silently", Icons.Default.Refresh, "ACTIONS", onTriggerGitSync),
-    CommandPaletteAction("Toggle Focus Mode", "Hide sidebar and toolbars for distraction-free writing", Icons.Outlined.FilterCenterFocus, "ACTIONS", onToggleFocusMode), // Replaced Info
-    CommandPaletteAction("Toggle Source Mode", "View raw unformatted markdown source", Icons.Default.Edit, "ACTIONS", onToggleSourceMode),
-    CommandPaletteAction("Create New Folder", "Organize notes into directory subfolders", Icons.Outlined.FolderOpen, "ACTIONS", onCreateFolder),
-    CommandPaletteAction("Sync Settings", "Manage remote repositories and conflict resolution", Icons.Default.Settings, "PREFERENCES", onOpenSettings)
-    )
-    val filteredActions = remember(query) {
-        if (query.trim().isEmpty()) baseActions else {
-            baseActions.filter { it.title.lowercase().contains(query.lowercase()) || it.description.lowercase().contains(query.lowercase()) }
-        }
+    val baseActions = remember(onToggleFocusMode, onExportPdf, onShareNote, onTriggerGitSync, onOpenSettings) {
+        listOf(
+            CommandPaletteAction(
+                title = "Toggle Focus Mode",
+                description = "Hide headers and toolbars for distraction-free writing",
+                icon = Icons.Outlined.FilterCenterFocus,
+                category = "ACTIONS",
+                onExecute = onToggleFocusMode
+            ),
+            CommandPaletteAction(
+                title = "Git Sync Now",
+                description = "Commit and push current vault changes to GitHub remote",
+                icon = Icons.Default.Sync,
+                category = "ACTIONS",
+                onExecute = onTriggerGitSync
+            ),
+            CommandPaletteAction(
+                title = "Sync Settings",
+                description = "Configure remote repositories and Personal Access Tokens",
+                icon = Icons.Default.Settings,
+                category = "PREFERENCES",
+                onExecute = onOpenSettings
+            ),
+            CommandPaletteAction(
+                title = "Export as PDF",
+                description = "Save current note as PDF document to Downloads folder",
+                icon = Icons.Default.PictureAsPdf,
+                category = "ACTIONS",
+                onExecute = onExportPdf
+            ),
+            CommandPaletteAction(
+                title = "Share Note",
+                description = "Share note text via Android system share sheet",
+                icon = Icons.Default.Share,
+                category = "ACTIONS",
+                onExecute = onShareNote
+            )
+        )
     }
 
-    val filteredNotes = remember(query, notes) {
-        if (query.trim().isEmpty()) notes.take(6) else {
-            notes.filter { it.title.lowercase().contains(query.lowercase()) || it.id.lowercase().contains(query.lowercase()) }.take(6)
+    val filteredActions = remember(query, baseActions) {
+        if (query.trim().isEmpty()) baseActions else {
+            baseActions.filter {
+                it.title.lowercase().contains(query.lowercase()) ||
+                    it.description.lowercase().contains(query.lowercase())
+            }
         }
     }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        containerColor = StitchBackground,
+        containerColor = MaterialTheme.colorScheme.surface,
         shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
         windowInsets = WindowInsets.ime,
         modifier = Modifier.imePadding()
     ) {
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
+            modifier = Modifier.fillMaxWidth()
         ) {
             // Drag handle centered top
             Box(
@@ -88,7 +108,7 @@ fun CommandPaletteSheet(
                 Surface(
                     modifier = Modifier.size(width = 36.dp, height = 4.dp),
                     shape = RoundedCornerShape(2.dp),
-                    color = StitchBorder
+                    color = MaterialTheme.colorScheme.outlineVariant
                 ) {}
             }
 
@@ -97,12 +117,12 @@ fun CommandPaletteSheet(
                 OutlinedTextField(
                     value = query,
                     onValueChange = { query = it },
-                    placeholder = { Text("Type a command...", color = StitchTextMuted, fontSize = 14.sp) },
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = StitchTextMuted) },
+                    placeholder = { Text("Type a command...", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp) },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
                     trailingIcon = {
                         if (query.isNotEmpty()) {
                             IconButton(onClick = { query = "" }) {
-                                Icon(Icons.Default.Clear, contentDescription = "Clear", tint = StitchTextMuted)
+                                Icon(Icons.Default.Clear, contentDescription = "Clear", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                     },
@@ -112,33 +132,31 @@ fun CommandPaletteSheet(
                         .padding(bottom = 12.dp),
                     shape = RoundedCornerShape(8.dp),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = StitchCardBg,
-                        unfocusedContainerColor = StitchCardBg,
-                        focusedBorderColor = StitchAccentCoral,
-                        unfocusedBorderColor = StitchBorder
+                        focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
                     )
                 )
 
                 LazyColumn(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f, fill = false),
+                    modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     val groupedActions = filteredActions.groupBy { it.category }
 
                     groupedActions.forEach { (category, actions) ->
-                        item {
+                        item(key = category) {
                             Text(
                                 text = category.uppercase(),
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = StitchTextMuted,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
                             )
                         }
 
-                        items(actions) { action ->
+                        items(actions, key = { it.title }) { action ->
                             StitchCommandActionCard(
                                 action = action,
                                 onClick = {
@@ -148,63 +166,10 @@ fun CommandPaletteSheet(
                             )
                         }
                     }
-
-                    if (filteredNotes.isNotEmpty()) {
-                        item {
-                            Text(
-                                text = "NOTES",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = StitchTextMuted,
-                                modifier = Modifier.padding(top = 12.dp, bottom = 4.dp)
-                            )
-                        }
-
-                        items(filteredNotes) { note ->
-                            Surface(
-                                onClick = {
-                                    onDismiss()
-                                    onSelectNote(note.id)
-                                },
-                                shape = RoundedCornerShape(8.dp),
-                                color = StitchCardBg,
-                                border = BorderStroke(1.dp, StitchBorder)
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 12.dp, vertical = 10.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(Icons.Default.Edit, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
-                                    Spacer(modifier = Modifier.width(12.dp))
-                                    Text(note.title, fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Medium)
-                                }
-                            }
-                        }
-                    }
                 }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
-
-            // Footer Bar matching Stitch Image 4
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                color = StitchSurfaceSecondary,
-                border = BorderStroke(1.dp, StitchBorder)
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 10.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("⌃ ⌄ to navigate", fontSize = 12.sp, color = StitchTextMuted)
-                    Text("↵ to select", fontSize = 12.sp, color = StitchTextMuted)
-                }
-            }
         }
     }
 }
@@ -217,8 +182,8 @@ private fun StitchCommandActionCard(
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(8.dp),
-        color = StitchCardBg,
-        border = BorderStroke(1.dp, StitchBorder)
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -241,12 +206,12 @@ private fun StitchCommandActionCard(
                 // Icon container box
                 Surface(
                     shape = RoundedCornerShape(6.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant,
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                    color = MaterialTheme.colorScheme.surface,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                     modifier = Modifier.size(36.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        Icon(action.icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                        Icon(action.icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
                     }
                 }
 

@@ -2153,7 +2153,7 @@ export function Editor({
             <img
               src="/SlashNote.png"
               alt="SlashNote"
-              className="w-32 aspect-square mx-auto mb-1 opacity-40"
+              className="w-32 aspect-square mx-auto mb-1 opacity-40 rounded-[6px] object-cover overflow-hidden"
             />
             <h1 className="text-2xl text-text font-serif mb-1 tracking-[-0.01em]">
               What's on your mind?

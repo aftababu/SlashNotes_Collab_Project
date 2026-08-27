@@ -13,6 +13,10 @@ android {
         targetSdk = 34
         versionCode = 1
         versionName = "1.0"
+        ndk {
+            abiFilters.clear()
+            abiFilters.add("arm64-v8a")
+        }
     }
 
     sourceSets {
@@ -52,6 +56,7 @@ android {
   dependencies {
 // Core AndroidX
     implementation("androidx.core:core-ktx:1.12.0")
+    implementation("androidx.core:core-splashscreen:1.0.1")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
 implementation("androidx.compose.material:material-icons-extended")
     // Jetpack Compose & Material 3

@@ -35,7 +35,7 @@ export function FolderPicker() {
           <img
             src="/SlashNote.png"
             alt="SlashNote"
-            className="w-48 aspect-square mx-auto mb-2 opacity-40 animate-fade-in-up"
+            className="w-48 aspect-square mx-auto mb-2 opacity-40 rounded-[6px] object-cover overflow-hidden animate-fade-in-up"
             style={{ animationDelay: "0ms" }}
           />
 

@@ -55,6 +55,17 @@ import androidx.compose.foundation.lazy.rememberLazyListState
  * links, wikilinks `[[note]]`, ordered/unordered/task lists, blockquotes,
  * tables, fenced code blocks (incl. mermaid), inline `$math$` and block `$$math$$`.
  */
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import androidx.compose.ui.graphics.graphicsLayer
+
+/**
+ * Compose-native Markdown renderer used in preview / read mode.
+ *
+ * Supports: headings, paragraphs, bold/italic/strikethrough, inline code,
+ * links, wikilinks `[[note]]`, ordered/unordered/task lists, blockquotes,
+ * tables, fenced code blocks (incl. mermaid), inline `$math$` and block `$$math$$`.
+ */
 @Composable
 fun MarkdownPreview(
     content: String,
@@ -64,11 +75,8 @@ fun MarkdownPreview(
     onScrollRatioChanged: ((Float) -> Unit)? = null,
     onWikilinkClick: ((String) -> Unit)? = null
 ) {
-    var blocks by remember { mutableStateOf<List<MdBlock>>(emptyList()) }
-
-    LaunchedEffect(content) {
-        blocks = withContext(Dispatchers.Default) { parseMarkdownBlocks(content) }
-    }
+    // Pre-parse Markdown AST into immutable list remembered by content string
+    val blocks = remember(content) { parseMarkdownBlocks(content) }
     val listState = rememberLazyListState()
 
     val headingIndexMap = remember(blocks) {
@@ -108,34 +116,51 @@ fun MarkdownPreview(
         }
     }
 
-    val firstVisibleIndex = listState.firstVisibleItemIndex
-    LaunchedEffect(firstVisibleIndex, blocks.size) {
-        if (blocks.isNotEmpty()) {
-            val ratio = if (blocks.size > 1) firstVisibleIndex.toFloat() / (blocks.size - 1).toFloat() else 0f
-            onScrollRatioChanged?.invoke(ratio)
-        }
+    // Wrap scroll ratio observation in snapshotFlow & distinctUntilChanged to prevent recomposition on every scroll frame
+    LaunchedEffect(listState, blocks) {
+        snapshotFlow { listState.firstVisibleItemIndex }
+            .distinctUntilChanged()
+            .collect { firstVisibleIndex ->
+                if (blocks.isNotEmpty()) {
+                    val ratio = if (blocks.size > 1) firstVisibleIndex.toFloat() / (blocks.size - 1).toFloat() else 0f
+                    onScrollRatioChanged?.invoke(ratio)
+                }
+            }
     }
 
     LazyColumn(
         state = listState,
         modifier = modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+        flingBehavior = androidx.compose.foundation.gestures.ScrollableDefaults.flingBehavior()
     ) {
-        itemsIndexed(blocks, key = { index, block -> index * 31 + block.hashCode() }) { index, block ->
-            when (block) {
-                is MdBlock.Heading -> HeadingBlock(block, content)
-                is MdBlock.Paragraph -> ParagraphBlock(block, content, onWikilinkClick)
-                is MdBlock.ListBlock -> ListBlock(block, content, onWikilinkClick)
-                is MdBlock.Blockquote -> BlockquoteBlock(block, content, onWikilinkClick)
-                is MdBlock.CodeBlock -> CodeBlockView(block)
-                is MdBlock.MathBlock -> MathBlockView(block)
-                is MdBlock.TableBlock -> TableBlock(block)
-                is MdBlock.HorizontalRule -> HorizontalDivider(color = StitchBorder, thickness = 1.dp)
-                is MdBlock.ListItem -> Unit
+        itemsIndexed(
+            items = blocks,
+            key = { _, block -> block.id }
+        ) { _, block ->
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .graphicsLayer {
+                        // Hardware layer rendering for 60/120fps flings
+                        clip = false
+                    }
+            ) {
+                when (block) {
+                    is MdBlock.Heading -> HeadingBlock(block, content)
+                    is MdBlock.Paragraph -> ParagraphBlock(block, content, onWikilinkClick)
+                    is MdBlock.ListBlock -> ListBlock(block, content, onWikilinkClick)
+                    is MdBlock.Blockquote -> BlockquoteBlock(block, content, onWikilinkClick)
+                    is MdBlock.CodeBlock -> CodeBlockView(block)
+                    is MdBlock.MathBlock -> MathBlockView(block)
+                    is MdBlock.TableBlock -> TableBlock(block)
+                    is MdBlock.HorizontalRule -> HorizontalDivider(color = StitchBorder, thickness = 1.dp)
+                    is MdBlock.ListItem -> Unit
+                }
             }
         }
         if (blocks.isEmpty()) {
-            item {
+            item(key = "empty_note") {
                 Text("Empty note", color = StitchTextMuted, fontSize = 13.sp)
             }
         }
@@ -146,26 +171,34 @@ fun MarkdownPreview(
 // Parsing model
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Parsing model
+// ---------------------------------------------------------------------------
+
 internal sealed class MdBlock {
-    class Heading(val level: Int, val content: String) : MdBlock()
-    class Paragraph(val content: String) : MdBlock()
+    abstract val id: String
+
+    class Heading(override val id: String, val level: Int, val content: String) : MdBlock()
+    class Paragraph(override val id: String, val content: String) : MdBlock()
     class ListBlock(
+        override val id: String,
         val ordered: Boolean,
         val items: List<ListItem>,
         val startNumber: Int
     ) : MdBlock()
 
-    class ListItem(val checked: Boolean?, val content: String) : MdBlock()
-    class Blockquote(val content: String) : MdBlock()
-    class CodeBlock(val language: String, val code: String) : MdBlock()
-    class MathBlock(val content: String) : MdBlock()
+    class ListItem(override val id: String, val checked: Boolean?, val content: String) : MdBlock()
+    class Blockquote(override val id: String, val content: String) : MdBlock()
+    class CodeBlock(override val id: String, val language: String, val code: String) : MdBlock()
+    class MathBlock(override val id: String, val content: String) : MdBlock()
     class TableBlock(
+        override val id: String,
         val headers: List<String>,
         val rows: List<List<String>>,
         val alignments: List<Align>
     ) : MdBlock()
 
-    class HorizontalRule : MdBlock()
+    class HorizontalRule(override val id: String) : MdBlock()
 }
 
 internal enum class Align { LEFT, CENTER, RIGHT }
@@ -175,6 +208,8 @@ internal fun parseMarkdownBlocks(source: String): List<MdBlock> {
     val blocks = mutableListOf<MdBlock>()
     var i = 0
     val n = lines.size
+
+    fun nextId(): String = "block_${blocks.size}"
 
     fun isFenceStart(line: String): Boolean {
         val t = line.trimStart()
@@ -202,7 +237,7 @@ internal fun parseMarkdownBlocks(source: String): List<MdBlock> {
 
         // Horizontal rule
         if (trimmed.matches(Regex("^(\\*{3,}|-{3,}|_{3,})$"))) {
-            blocks.add(MdBlock.HorizontalRule())
+            blocks.add(MdBlock.HorizontalRule(nextId()))
             i++
             continue
         }
@@ -226,12 +261,8 @@ internal fun parseMarkdownBlocks(source: String): List<MdBlock> {
                 codeLines.add(l)
                 i++
             }
-            if (!closed) {
-                // Unterminated fence: treat remaining lines as code
-                blocks.add(MdBlock.CodeBlock(lang, codeLines.joinToString("\n")))
-                break
-            }
-            blocks.add(MdBlock.CodeBlock(lang, codeLines.joinToString("\n")))
+            blocks.add(MdBlock.CodeBlock(nextId(), lang, codeLines.joinToString("\n")))
+            if (!closed) break
             continue
         }
 
@@ -242,7 +273,7 @@ internal fun parseMarkdownBlocks(source: String): List<MdBlock> {
                 codeLines.add(lines[i].trimStart(' ', '\t'))
                 i++
             }
-            blocks.add(MdBlock.CodeBlock("", codeLines.joinToString("\n")))
+            blocks.add(MdBlock.CodeBlock(nextId(), "", codeLines.joinToString("\n")))
             continue
         }
 
@@ -253,7 +284,7 @@ internal fun parseMarkdownBlocks(source: String): List<MdBlock> {
             if (trimmed.length > 2 && trimmed.endsWith("$$") && trimmed.length >= 4) {
                 val inner = trimmed.substring(2, trimmed.length - 2)
                 if (inner.isNotEmpty()) {
-                    blocks.add(MdBlock.MathBlock(inner))
+                    blocks.add(MdBlock.MathBlock(nextId(), inner))
                     i++
                     continue
                 }
@@ -272,7 +303,7 @@ internal fun parseMarkdownBlocks(source: String): List<MdBlock> {
             }
             val content = mathLines.joinToString("\n")
             if (content.isNotEmpty()) {
-                blocks.add(MdBlock.MathBlock(content))
+                blocks.add(MdBlock.MathBlock(nextId(), content))
             }
             if (!closed) break
             continue
@@ -280,15 +311,9 @@ internal fun parseMarkdownBlocks(source: String): List<MdBlock> {
 
         // Heading
         val headingMatch = Regex("^(#{1,6})\\s+(.*)$").find(trimmed)
-        if (headingMatch != null && !trimmed.startsWith("## ")) {
+        if (headingMatch != null) {
             val level = headingMatch.groupValues[1].length
-            blocks.add(MdBlock.Heading(level, headingMatch.groupValues[2]))
-            i++
-            continue
-        }
-        // Allow ATX heading like "#### title" (regex already requires space; handle "###")
-        if (Regex("^#{1,6}\\s+").containsMatchIn(trimmed) && headingMatch != null) {
-            blocks.add(MdBlock.Heading(headingMatch.groupValues[1].length, headingMatch.groupValues[2]))
+            blocks.add(MdBlock.Heading(nextId(), level, headingMatch.groupValues[2]))
             i++
             continue
         }
@@ -300,7 +325,7 @@ internal fun parseMarkdownBlocks(source: String): List<MdBlock> {
                 quoteLines.add(lines[i].trimStart().removePrefix(">").trimStart())
                 i++
             }
-            blocks.add(MdBlock.Blockquote(quoteLines.joinToString("\n")))
+            blocks.add(MdBlock.Blockquote(nextId(), quoteLines.joinToString("\n")))
             continue
         }
 
@@ -325,7 +350,7 @@ internal fun parseMarkdownBlocks(source: String): List<MdBlock> {
                     rows.add(splitTableRow(lines[i]))
                     i++
                 }
-                blocks.add(MdBlock.TableBlock(headerRow, rows, alignments))
+                blocks.add(MdBlock.TableBlock(nextId(), headerRow, rows, alignments))
                 continue
             }
         }
@@ -336,14 +361,17 @@ internal fun parseMarkdownBlocks(source: String): List<MdBlock> {
             val ordered = listMatch.groupValues[1].any { it.isDigit() }
             val startNumber = if (ordered) listMatch.groupValues[1].dropLast(1).toIntOrNull() ?: 1 else 1
             val items = mutableListOf<MdBlock.ListItem>()
+            val listBlockId = nextId()
             while (i < n) {
                 val m = Regex("^\\s*([-*+]|\\d+\\.)\\s+(.*)$").find(lines[i])
                 if (m == null) {
                     // Continuation line (indented)
                     if (items.isNotEmpty() && (lines[i].startsWith("  ") || lines[i].startsWith("\t") || lines[i].isBlank())) {
+                        val last = items[items.size - 1]
                         items[items.size - 1] = MdBlock.ListItem(
-                            items[items.size - 1].checked,
-                            items[items.size - 1].content + "\n" + lines[i].trim()
+                            last.id,
+                            last.checked,
+                            last.content + "\n" + lines[i].trim()
                         )
                         i++
                         continue
@@ -360,10 +388,10 @@ internal fun parseMarkdownBlocks(source: String): List<MdBlock> {
                     checked = taskMatch.groupValues[1] in listOf("x", "X")
                     content = taskMatch.groupValues[2]
                 }
-                items.add(MdBlock.ListItem(checked, content))
+                items.add(MdBlock.ListItem("${listBlockId}_item_${items.size}", checked, content))
                 i++
             }
-            blocks.add(MdBlock.ListBlock(ordered, items, startNumber))
+            blocks.add(MdBlock.ListBlock(listBlockId, ordered, items, startNumber))
             continue
         }
 
@@ -381,7 +409,7 @@ internal fun parseMarkdownBlocks(source: String): List<MdBlock> {
             i++
         }
         if (paraLines.isNotEmpty()) {
-            blocks.add(MdBlock.Paragraph(paraLines.joinToString(" ")))
+            blocks.add(MdBlock.Paragraph(nextId(), paraLines.joinToString("\n")))
         } else {
             i++
         }
@@ -414,6 +442,9 @@ private fun splitTableRow(row: String): List<String> {
 
 @Composable
 private fun HeadingBlock(block: MdBlock.Heading, raw: String) {
+    val annotated = remember(block.content, raw) {
+        inlineMarkdown(block.content, raw)
+    }
     val size = when (block.level) {
         1 -> 26.sp
         2 -> 22.sp
@@ -422,7 +453,7 @@ private fun HeadingBlock(block: MdBlock.Heading, raw: String) {
         else -> 15.sp
     }
     Text(
-        text = inlineMarkdown(block.content, raw),
+        text = annotated,
         fontSize = size,
         fontWeight = FontWeight.Bold,
         color = MaterialTheme.colorScheme.onSurface,
@@ -459,8 +490,11 @@ private fun ClickableMarkdownText(
 
 @Composable
 private fun ParagraphBlock(block: MdBlock.Paragraph, raw: String, onWikilinkClick: ((String) -> Unit)?) {
+    val annotated = remember(block.content, raw) {
+        inlineMarkdown(block.content, raw)
+    }
     ClickableMarkdownText(
-        annotatedString = inlineMarkdown(block.content, raw),
+        annotatedString = annotated,
         fontSize = 14.sp,
         lineHeight = 21.sp,
         color = MaterialTheme.colorScheme.onSurface,
@@ -472,6 +506,9 @@ private fun ParagraphBlock(block: MdBlock.Paragraph, raw: String, onWikilinkClic
 private fun ListBlock(block: MdBlock.ListBlock, raw: String, onWikilinkClick: ((String) -> Unit)?) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         block.items.forEachIndexed { index, item ->
+            val annotatedItem = remember(item.content, raw) {
+                inlineMarkdown(item.content, raw)
+            }
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.Top
@@ -507,7 +544,7 @@ private fun ListBlock(block: MdBlock.ListBlock, raw: String, onWikilinkClick: ((
                 }
                 Spacer(modifier = Modifier.width(8.dp))
                 ClickableMarkdownText(
-                    annotatedString = inlineMarkdown(item.content, raw),
+                    annotatedString = annotatedItem,
                     fontSize = 14.sp,
                     lineHeight = 21.sp,
                     color = MaterialTheme.colorScheme.onSurface,
@@ -521,6 +558,9 @@ private fun ListBlock(block: MdBlock.ListBlock, raw: String, onWikilinkClick: ((
 
 @Composable
 private fun BlockquoteBlock(block: MdBlock.Blockquote, raw: String, onWikilinkClick: ((String) -> Unit)?) {
+    val annotated = remember(block.content, raw) {
+        inlineMarkdown(block.content, raw)
+    }
     Row(modifier = Modifier.fillMaxWidth()) {
         Box(
             modifier = Modifier
@@ -530,7 +570,7 @@ private fun BlockquoteBlock(block: MdBlock.Blockquote, raw: String, onWikilinkCl
         )
         Spacer(modifier = Modifier.width(10.dp))
         Text(
-            text = inlineMarkdown(block.content, raw),
+            text = annotated,
             fontSize = 13.sp,
             lineHeight = 19.sp,
             fontStyle = FontStyle.Italic,
@@ -574,10 +614,14 @@ private object SyntaxHighlighter {
 @Composable
 private fun CodeBlockView(block: MdBlock.CodeBlock) {
     val clipboardManager = LocalClipboardManager.current
-    
+    val highlightedText = remember(block.code) {
+        SyntaxHighlighter.highlight(block.code)
+    }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .defaultMinSize(minHeight = 48.dp)
             .background(StitchCodeBg, RoundedCornerShape(8.dp))
             .padding(12.dp)
     ) {
@@ -608,9 +652,9 @@ private fun CodeBlockView(block: MdBlock.CodeBlock) {
             }
         }
         Spacer(modifier = Modifier.height(6.dp))
-        
+
         Text(
-            text = SyntaxHighlighter.highlight(block.code),
+            text = highlightedText,
             fontFamily = FontFamily.Monospace,
             fontSize = 12.sp,
             lineHeight = 17.sp,
@@ -623,17 +667,21 @@ private fun CodeBlockView(block: MdBlock.CodeBlock) {
 /** Centered block math renderer: `$$ ... $$` (multi-line TeX). */
 @Composable
 private fun MathBlockView(block: MdBlock.MathBlock) {
+    val mathLines = remember(block.content) {
+        block.content.split("\n").map { latexToUnicode(it) }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .defaultMinSize(minHeight = 40.dp)
             .background(StitchCodeBg, RoundedCornerShape(8.dp))
             .padding(horizontal = 16.dp, vertical = 12.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        block.content.split("\n").forEach { line ->
-            val converted = latexToUnicode(line)
+        mathLines.forEach { lineText ->
             Text(
-                text = converted,
+                text = lineText,
                 fontFamily = FontFamily.Monospace,
                 fontSize = 15.sp,
                 lineHeight = 22.sp,

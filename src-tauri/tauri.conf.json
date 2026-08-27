@@ -4,9 +4,9 @@
   "version": "0.10.0",
   "identifier": "com.slashnote.app",
   "build": {
-    "beforeDevCommand": "npm run dev",
+    "beforeDevCommand": "pnpm run dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "npm run build",
+    "beforeBuildCommand": "pnpm run build",
     "frontendDist": "../dist"
   },
   "app": {
@@ -38,7 +38,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["deb","rpm"],
     "createUpdaterArtifacts": true,
     "fileAssociations": [
       {

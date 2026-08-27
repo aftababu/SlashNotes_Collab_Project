@@ -19,6 +19,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -35,10 +36,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.FolderOpen
+import androidx.compose.material.icons.outlined.SnippetFolder
+import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -54,6 +59,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.WindowCompat
 import com.slashnote.app.security.AppSettings
 import com.slashnote.app.security.SecureStorage
@@ -64,6 +70,7 @@ import com.slashnote.app.ui.components.CommandPaletteSheet
 import com.slashnote.app.ui.components.StitchBottomTab
 import com.slashnote.app.ui.components.UnifiedSearchOverlay
 import com.slashnote.app.ui.drawer.FolderTreeView
+import com.slashnote.app.ui.drawer.TrashBinSheet
 import com.slashnote.app.ui.editor.InNoteSearchBar
 import com.slashnote.app.ui.editor.MarkdownPreview
 import com.slashnote.app.ui.editor.MarkdownSpanCache
@@ -111,6 +118,103 @@ private fun Uri.toAbsolutePath(): String {
     return File(base, subPath.trim('/')).absolutePath
 }
 
+private fun exportNoteToPdf(context: Context, filename: String, content: String) {
+    try {
+        if (content.isBlank()) {
+            Toast.makeText(context, "Cannot export empty note to PDF", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val pdfDocument = android.graphics.pdf.PdfDocument()
+        val pageInfo = android.graphics.pdf.PdfDocument.PageInfo.Builder(595, 842, 1).create()
+        var page = pdfDocument.startPage(pageInfo)
+        var canvas = page.canvas
+
+        val paint = android.graphics.Paint().apply {
+            color = android.graphics.Color.BLACK
+            textSize = 14f
+            isAntiAlias = true
+        }
+
+        val titlePaint = android.text.TextPaint().apply {
+            color = android.graphics.Color.BLACK
+            textSize = 20f
+            isFakeBoldText = true
+            isAntiAlias = true
+        }
+
+        val bodyPaint = android.text.TextPaint().apply {
+            color = android.graphics.Color.DKGRAY
+            textSize = 12f
+            isAntiAlias = true
+        }
+
+        val cleanTitle = File(filename).nameWithoutExtension.ifEmpty { "Note" }
+        var y = 50f
+        canvas.drawText("SlashNote: $cleanTitle", 40f, y, titlePaint)
+        y += 30f
+        canvas.drawLine(40f, y, 555f, y, paint.apply { strokeWidth = 1f })
+        y += 25f
+
+        val textLayoutWidth = 515
+        val lines = content.split("\n")
+
+        for (rawLine in lines) {
+            val textLayout = android.text.StaticLayout.Builder.obtain(rawLine, 0, rawLine.length, bodyPaint, textLayoutWidth)
+                .setAlignment(android.text.Layout.Alignment.ALIGN_NORMAL)
+                .setLineSpacing(0f, 1.2f)
+                .build()
+
+            if (y + textLayout.height > 800f) {
+                pdfDocument.finishPage(page)
+                page = pdfDocument.startPage(pageInfo)
+                canvas = page.canvas
+                y = 50f
+            }
+
+            canvas.save()
+            canvas.translate(40f, y)
+            textLayout.draw(canvas)
+            canvas.restore()
+            y += textLayout.height + 10f
+        }
+
+        pdfDocument.finishPage(page)
+
+        val sanitizedTitle = cleanTitle.replace("[^a-zA-Z0-9_-]".toRegex(), "_")
+        val pdfName = "${sanitizedTitle}_${System.currentTimeMillis()}.pdf"
+
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            val resolver = context.contentResolver
+            val contentValues = android.content.ContentValues().apply {
+                put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, pdfName)
+                put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "application/pdf")
+                put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+            }
+            val uri = resolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
+            if (uri != null) {
+                resolver.openOutputStream(uri)?.use { out ->
+                    pdfDocument.writeTo(out)
+                }
+                Toast.makeText(context, "Exported PDF to Downloads/$pdfName", Toast.LENGTH_LONG).show()
+            } else {
+                Toast.makeText(context, "Failed to create PDF in Downloads", Toast.LENGTH_SHORT).show()
+            }
+        } else {
+            val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            if (!downloadsDir.exists()) downloadsDir.mkdirs()
+            val file = File(downloadsDir, pdfName)
+            java.io.FileOutputStream(file).use { out ->
+                pdfDocument.writeTo(out)
+            }
+            Toast.makeText(context, "Exported PDF to Downloads/$pdfName", Toast.LENGTH_LONG).show()
+        }
+        pdfDocument.close()
+    } catch (e: Exception) {
+        Log.e("PdfExport", "Error exporting PDF", e)
+        Toast.makeText(context, "PDF Export Failed: ${e.message}", Toast.LENGTH_LONG).show()
+    }
+}
+
 private const val TAG = "SlashNoteVault"
 
 class MainActivity : ComponentActivity() {
@@ -121,6 +225,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        installSplashScreen()
         super.onCreate(savedInstanceState)
         
         WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -181,6 +286,7 @@ fun SlashNoteApp(
     var activeBottomTab by remember { mutableStateOf(StitchBottomTab.EDITOR) }
 
     var isSettingsOpen by remember { mutableStateOf(false) }
+    var isTrashOpen by remember { mutableStateOf(false) }
     var isCreateNoteOpen by remember { mutableStateOf(false) }
     var isCreateFolderOpen by remember { mutableStateOf(false) }
     var isCommandPaletteOpen by remember { mutableStateOf(false) }
@@ -198,16 +304,19 @@ fun SlashNoteApp(
 
     var allNotesList by remember { mutableStateOf<List<NoteHeader>>(emptyList()) }
     var pinnedIds by remember { mutableStateOf(AppSettings.getPinnedNoteIds(context)) }
+    var isRefreshingNotes by remember { mutableStateOf(false) }
 
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
 
-    val refreshNotesList = remember {
+    val refreshNotesList = remember(notesDir) {
         {
             scope.launch {
+                isRefreshingNotes = true
                 allNotesList = withContext(Dispatchers.IO) {
                     listNotes(notesDir)
                 }
                 pinnedIds = AppSettings.getPinnedNoteIds(context)
+                isRefreshingNotes = false
             }
         }
     }
@@ -278,7 +387,7 @@ fun SlashNoteApp(
             notesDir = notesDir,
             isDarkTheme = isDarkTheme,
             onToggleTheme = onToggleTheme,
-            onSelectBottomTab = handleBottomTabSelect,
+            onBack = { isSettingsOpen = false },
             onPickCustomVaultPath = { safFolderLauncher.launch(null) }
         )
     } else {
@@ -337,49 +446,105 @@ fun SlashNoteApp(
                                 Text("Cancel", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodyMedium)
                             }
                         } else {
+                            val hasCustomVault = customVaultPathState.isNotBlank()
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.weight(1f)
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable {
+                                        if (!hasCustomVault) {
+                                            safFolderLauncher.launch(null)
+                                        }
+                                    }
                             ) {
                                 Icon(
-                                    imageVector = Icons.Outlined.Folder,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    imageVector = if (hasCustomVault) Icons.Outlined.SnippetFolder else Icons.Outlined.FolderOpen,
+                                    contentDescription = if (hasCustomVault) "Vault" else "Open Vault",
+                                    tint = if (hasCustomVault) MaterialTheme.colorScheme.onSurfaceVariant else StitchAccentCoral,
                                     modifier = Modifier.size(24.dp)
                                 )
                                 Spacer(modifier = Modifier.width(10.dp))
                                 Text(
-                                    text = vaultName,
+                                    text = if (hasCustomVault) vaultName else "Open Vault",
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSurface
+                                    color = if (hasCustomVault) MaterialTheme.colorScheme.onSurface else StitchAccentCoral
                                 )
                             }
 
-                            Row {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                IconButton(
+                                    onClick = { refreshNotesList() },
+                                    enabled = !isRefreshingNotes,
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    if (isRefreshingNotes) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(16.dp),
+                                            strokeWidth = 2.dp,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    } else {
+                                        Icon(
+                                            Icons.Default.Refresh,
+                                            contentDescription = "Refresh Notes",
+                                            tint = MaterialTheme.colorScheme.onSurface,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                }
                                 IconButton(
                                     onClick = { isSidebarSearchOpen = true },
                                     modifier = Modifier.size(32.dp)
                                 ) {
                                     Icon(Icons.Default.Search, contentDescription = "Search Notes", tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(20.dp))
                                 }
-                                IconButton(
-                                    onClick = { isCreateNoteOpen = true },
-                                    modifier = Modifier.size(32.dp)
-                                ) {
-                                    Icon(Icons.Default.Add, contentDescription = "New File", tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(20.dp))
-                                }
-                                IconButton(
-                                    onClick = { isCreateFolderOpen = true },
-                                    modifier = Modifier.size(32.dp)
-                                ) {
-                                    Icon(Icons.Outlined.FolderOpen, contentDescription = "New Folder", tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(20.dp))
+                                var isNewMenuExpanded by remember { mutableStateOf(false) }
+                                Box {
+                                    IconButton(
+                                        onClick = { isNewMenuExpanded = true },
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Add,
+                                            contentDescription = "New Item",
+                                            tint = MaterialTheme.colorScheme.onSurface,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+
+                                    DropdownMenu(
+                                        expanded = isNewMenuExpanded,
+                                        onDismissRequest = { isNewMenuExpanded = false },
+                                        modifier = Modifier.background(StitchCardBg)
+                                    ) {
+                                        DropdownMenuItem(
+                                            text = { Text("New Note", color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp) },
+                                            leadingIcon = {
+                                                Icon(Icons.Default.Edit, contentDescription = null, tint = StitchAccentCoral, modifier = Modifier.size(18.dp))
+                                            },
+                                            onClick = {
+                                                isNewMenuExpanded = false
+                                                isCreateNoteOpen = true
+                                            }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("New Folder", color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp) },
+                                            leadingIcon = {
+                                                Icon(Icons.Outlined.FolderOpen, contentDescription = null, tint = StitchAccentCoral, modifier = Modifier.size(18.dp))
+                                            },
+                                            onClick = {
+                                                isNewMenuExpanded = false
+                                                isCreateFolderOpen = true
+                                            }
+                                        )
+                                    }
                                 }
                             }
                         }
                     }
 
-                    HorizontalDivider(color = StitchBorder)
+                    HorizontalDivider(color = StitchBorder.copy(alpha = 0.4f))
 
                     // Virtualized Nested Folder Tree View or Search Results
                     Box(modifier = Modifier.weight(1f)) {
@@ -389,6 +554,8 @@ fun SlashNoteApp(
                             selectedFilename = selectedFilename,
                             searchQuery = sidebarSearchQuery,
                             showAllFiles = showAllFilesState,
+                            isRefreshing = isRefreshingNotes,
+                            onRefreshNotes = { refreshNotesList() },
                             onNavigateDir = { currentRelativeDir = it },
                             onSelectNote = { relPath ->
                                 scope.launch {
@@ -410,9 +577,9 @@ fun SlashNoteApp(
                         )
                     }
 
-                    HorizontalDivider(color = StitchBorder)
+                    HorizontalDivider(color = StitchBorder.copy(alpha = 0.4f))
 
-                    // Split Footer Bar (Git Sync on Bottom-Left, Settings Gear on Bottom-Right)
+                    // Bottom Footer Bar (Git Sync on Left, Trash Bin + Settings on Right)
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
                         color = MaterialTheme.colorScheme.surface
@@ -420,7 +587,7 @@ fun SlashNoteApp(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                                .padding(horizontal = 12.dp, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
@@ -442,18 +609,18 @@ fun SlashNoteApp(
                                                  try {
                                                      initGitRepository(targetRepoDir)
                                                      val msg = syncGitRepository(targetRepoDir, token, remoteUrl, branch)
-                                                    withContext(Dispatchers.Main) {
-                                                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
-                                                        refreshNotesList()
-                                                    }
-                                                } catch (e: Exception) {
-                                                    Log.e("GitSync", "Full Sync Error Details:", e)
-                                                    val errMsg = e.message ?: e.toString()
-                                                    withContext(Dispatchers.Main) {
-                                                        syncErrorDialogText = errMsg
-                                                    }
-                                                }
-                                            }
+                                                     withContext(Dispatchers.Main) {
+                                                         Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                                         refreshNotesList()
+                                                     }
+                                                 } catch (e: Exception) {
+                                                     Log.e("GitSync", "Full Sync Error Details:", e)
+                                                     val errMsg = e.message ?: e.toString()
+                                                     withContext(Dispatchers.Main) {
+                                                         syncErrorDialogText = errMsg
+                                                     }
+                                                 }
+                                             }
                                         }
                                     }
                                     .padding(vertical = 4.dp, horizontal = 6.dp)
@@ -473,20 +640,32 @@ fun SlashNoteApp(
                                 )
                             }
 
-                            IconButton(
-                                onClick = {
-                                    scope.launch {
-                                        drawerState.close()
-                                        activeBottomTab = StitchBottomTab.SETTINGS
-                                        isSettingsOpen = true
-                                    }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                IconButton(
+                                    onClick = { isTrashOpen = true }
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Delete,
+                                        contentDescription = "Trash Bin",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
                                 }
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Settings,
-                                    contentDescription = "Settings",
-                                    tint = MaterialTheme.colorScheme.onSurface
-                                )
+
+                                IconButton(
+                                    onClick = {
+                                        scope.launch {
+                                            drawerState.close()
+                                            activeBottomTab = StitchBottomTab.SETTINGS
+                                            isSettingsOpen = true
+                                        }
+                                    }
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Settings,
+                                        contentDescription = "Settings",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
                             }
                         }
                     }
@@ -494,87 +673,68 @@ fun SlashNoteApp(
             }
         ) {
             if (selectedFilename == null) {
-                Scaffold(
-                bottomBar = {
-                    BottomNavBar(
-                        selectedTab = activeBottomTab,
-                        onSelectTab = handleBottomTabSelect
-                    )
-                },
-                containerColor = MaterialTheme.colorScheme.background
-            ) { padding ->
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding)
-                ) {
-                    NoteListScreen(
-                        notesDir = notesDir,
-                        pinnedIds = pinnedIds,
-                        activeBottomTab = activeBottomTab,
-                        onSelectBottomTab = handleBottomTabSelect,
-                        onNoteSelected = { relPath ->
-                            noteBackStack.clear()
-                            activeHeadingAnchor = null
-                            selectedFilename = relPath
-                        },
-                        onOpenDrawer = { scope.launch { drawerState.open() } },
-                        onOpenSearch = { isUnifiedSearchOpen = true },
-                        onCreateNote = { isCreateNoteOpen = true },
-                        onOpenVaultPicker = { safFolderLauncher.launch(null) },
-                        onTogglePin = { noteId ->
-                            AppSettings.togglePinnedNoteId(context, noteId)
-                            refreshNotesList()
-                        },
-                        onDuplicate = { filename ->
-                            scope.launch {
-                                val duplicated = withContext(Dispatchers.IO) {
-                                    duplicateNote(notesDir, filename)
-                                }
-                                if (duplicated.isNotEmpty()) {
-                                    Toast.makeText(context, "Duplicated: $duplicated", Toast.LENGTH_SHORT).show()
-                                    refreshNotesList()
-                                }
+                NoteListScreen(
+                    notesDir = notesDir,
+                    pinnedIds = pinnedIds,
+                    onNoteSelected = { relPath ->
+                        noteBackStack.clear()
+                        activeHeadingAnchor = null
+                        selectedFilename = relPath
+                    },
+                    onOpenDrawer = { scope.launch { drawerState.open() } },
+                    onOpenSearch = { isUnifiedSearchOpen = true },
+                    onCreateNote = { isCreateNoteOpen = true },
+                    onOpenVaultPicker = { safFolderLauncher.launch(null) },
+                    onTogglePin = { noteId ->
+                        val isPinned = AppSettings.togglePinnedNoteId(context, noteId)
+                        pinnedIds = AppSettings.getPinnedNoteIds(context)
+                        val msg = if (isPinned) "Note pinned to top" else "Note unpinned"
+                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                    },
+                    onDuplicate = { filename ->
+                        scope.launch {
+                            withContext(Dispatchers.IO) {
+                                duplicateNote(notesDir, filename)
                             }
-                        },
-                        onCopyPath = { filename ->
-                            val fullPath = File(notesDir, filename).absolutePath
-                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                            clipboard.setPrimaryClip(ClipData.newPlainText("File Path", fullPath))
-                            Toast.makeText(context, "Copied filepath to clipboard", Toast.LENGTH_SHORT).show()
-                        },
-                        onTriggerSync = {
-                            val token = SecureStorage.getGitToken(context)
-                            val remoteUrl = SecureStorage.getRemoteUrl(context)
-                            val branch = SecureStorage.getGitBranch(context)
-                            if (remoteUrl.isEmpty() || token.isEmpty()) {
-                                Toast.makeText(context, "Sync Failed: Remote URL or PAT token missing in Settings", Toast.LENGTH_LONG).show()
-                            } else {
-                                Toast.makeText(context, "Syncing with GitHub...", Toast.LENGTH_SHORT).show()
-                                StorageUtils.checkAndRequestStoragePermission(context)
-                                val targetRepoDir = StorageUtils.getSafeVaultPath(context, notesDir)
-                                scope.launch(Dispatchers.IO) {
-                                    try {
-                                        initGitRepository(targetRepoDir)
-                                        val msg = syncGitRepository(targetRepoDir, token, remoteUrl, branch)
-                                        withContext(Dispatchers.Main) {
-                                            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
-                                            refreshNotesList()
-                                        }
-                                    } catch (e: Exception) {
-                                        Log.e("GitSync", "Full Sync Error Details:", e)
-                                        val errMsg = e.message ?: e.toString()
-                                        withContext(Dispatchers.Main) {
-                                            syncErrorDialogText = errMsg
-                                        }
+                            refreshNotesList()
+                        }
+                    },
+                    onCopyPath = { filename ->
+                        val fullPath = if (notesDir.endsWith("/")) "$notesDir$filename" else "$notesDir/$filename"
+                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        clipboard.setPrimaryClip(ClipData.newPlainText("File Path", fullPath))
+                        Toast.makeText(context, "Path copied to clipboard", Toast.LENGTH_SHORT).show()
+                    },
+                    onTriggerSync = {
+                        val token = SecureStorage.getGitToken(context)
+                        val remoteUrl = SecureStorage.getRemoteUrl(context)
+                        val branch = SecureStorage.getGitBranch(context)
+                        if (remoteUrl.isEmpty() || token.isEmpty()) {
+                            Toast.makeText(context, "Sync Failed: Remote URL or PAT token missing in Settings", Toast.LENGTH_LONG).show()
+                        } else {
+                            Toast.makeText(context, "Syncing with GitHub...", Toast.LENGTH_SHORT).show()
+                            StorageUtils.checkAndRequestStoragePermission(context)
+                            val targetRepoDir = StorageUtils.getSafeVaultPath(context, notesDir)
+                            scope.launch(Dispatchers.IO) {
+                                try {
+                                    initGitRepository(targetRepoDir)
+                                    val msg = syncGitRepository(targetRepoDir, token, remoteUrl, branch)
+                                    withContext(Dispatchers.Main) {
+                                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                        refreshNotesList()
+                                    }
+                                } catch (e: Exception) {
+                                    Log.e("GitSync", "Full Sync Error Details:", e)
+                                    val errMsg = e.message ?: e.toString()
+                                    withContext(Dispatchers.Main) {
+                                        syncErrorDialogText = errMsg
                                     }
                                 }
                             }
                         }
-                    )
-                }
-            }
-        } else {
+                    }
+                )
+            } else {
             NoteEditorScreen(
                 notesDir = notesDir,
             filename = selectedFilename!!,
@@ -653,16 +813,33 @@ fun SlashNoteApp(
 
     if (isCommandPaletteOpen) {
         CommandPaletteSheet(
-            notes = allNotesList,
-            onDismiss = {
-                isCommandPaletteOpen = false
-                activeBottomTab = StitchBottomTab.EDITOR
+            onDismiss = { isCommandPaletteOpen = false },
+            onToggleFocusMode = { isFocusMode = !isFocusMode },
+            onExportPdf = {
+                val currentFile = selectedFilename
+                if (currentFile.isNullOrBlank()) {
+                    Toast.makeText(context, "No note open to export", Toast.LENGTH_SHORT).show()
+                } else {
+                    scope.launch(Dispatchers.IO) {
+                        val fullPath = if (notesDir.endsWith("/")) "$notesDir$currentFile" else "$notesDir/$currentFile"
+                        val content = try {
+                            val f = File(fullPath)
+                            if (f.exists()) f.readText() else ""
+                        } catch (e: Exception) { "" }
+                        
+                        withContext(Dispatchers.Main) {
+                            exportNoteToPdf(context, currentFile, content)
+                        }
+                    }
+                }
             },
-            onSelectNote = { filename ->
-                selectedFilename = filename
+            onShareNote = {
+                val intent = Intent(Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(Intent.EXTRA_TEXT, selectedFilename ?: "")
+                }
+                context.startActivity(Intent.createChooser(intent, "Share Note"))
             },
-            onCreateNote = { isCreateNoteOpen = true },
-            onCreateFolder = { isCreateFolderOpen = true },
             onTriggerGitSync = {
                 val token = SecureStorage.getGitToken(context)
                 val remoteUrl = SecureStorage.getRemoteUrl(context)
@@ -691,13 +868,16 @@ fun SlashNoteApp(
                     }
                 }
             },
-            onToggleTheme = onToggleTheme,
-            onToggleFocusMode = { isFocusMode = !isFocusMode },
-            onToggleSourceMode = { isSourceMode = !isSourceMode },
             onOpenSettings = {
                 isSettingsOpen = true
-                activeBottomTab = StitchBottomTab.SETTINGS
             }
+        )
+    }
+
+    if (isTrashOpen) {
+        TrashBinSheet(
+            notesDir = notesDir,
+            onDismiss = { isTrashOpen = false }
         )
     }
 
@@ -809,8 +989,8 @@ fun SlashNoteApp(
 fun NoteListScreen(
     notesDir: String,
     pinnedIds: Set<String>,
-    activeBottomTab: StitchBottomTab,
-    onSelectBottomTab: (StitchBottomTab) -> Unit,
+    activeBottomTab: StitchBottomTab = StitchBottomTab.EDITOR,
+    onSelectBottomTab: ((StitchBottomTab) -> Unit)? = null,
     onNoteSelected: (String) -> Unit,
     onOpenDrawer: () -> Unit,
     onOpenSearch: () -> Unit,
@@ -831,12 +1011,14 @@ fun NoteListScreen(
                 getCachedNoteHeaders(notesDir)
             }
             val recentlyVisited = AppSettings.getRecentlyVisitedNotes(context)
-            notes = fetched.sortedWith(
-                compareByDescending<CachedNoteHeader> { note ->
-                    val visitIndex = recentlyVisited.indexOf(note.relativePath)
-                    if (visitIndex != -1) Long.MAX_VALUE - visitIndex else note.lastModifiedUnix
-                }.thenByDescending { it.lastModifiedUnix }
-            ).take(10)
+            val visited = recentlyVisited.mapNotNull { relPath ->
+                fetched.find { it.relativePath == relPath }
+            }
+            notes = if (visited.isNotEmpty()) {
+                visited.take(10)
+            } else {
+                fetched.sortedByDescending { it.lastModifiedUnix }.take(10)
+            }
         }
     }
 
@@ -845,12 +1027,14 @@ fun NoteListScreen(
             getCachedNoteHeaders(notesDir)
         }
         val recentlyVisited = AppSettings.getRecentlyVisitedNotes(context)
-        notes = fetched.sortedWith(
-            compareByDescending<CachedNoteHeader> { note ->
-                val visitIndex = recentlyVisited.indexOf(note.relativePath)
-                if (visitIndex != -1) Long.MAX_VALUE - visitIndex else note.lastModifiedUnix
-            }.thenByDescending { it.lastModifiedUnix }
-        ).take(10)
+        val visited = recentlyVisited.mapNotNull { relPath ->
+            fetched.find { it.relativePath == relPath }
+        }
+        notes = if (visited.isNotEmpty()) {
+            visited.take(10)
+        } else {
+            fetched.sortedByDescending { it.lastModifiedUnix }.take(10)
+        }
     }
 
     Scaffold(
@@ -861,7 +1045,10 @@ fun NoteListScreen(
                         androidx.compose.foundation.Image(
                             painter = androidx.compose.ui.res.painterResource(id = com.slashnote.app.R.drawable.slashnote_logo),
                             contentDescription = "Logo",
-                            modifier = Modifier.size(20.dp),
+                            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                            modifier = Modifier
+                                .size(20.dp)
+                                .clip(RoundedCornerShape(6.dp)),
                             alpha = 0.8f
                         )
                         Spacer(modifier = Modifier.width(8.dp))
@@ -875,13 +1062,9 @@ fun NoteListScreen(
                 },
                 actions = {
                     IconButton(onClick = onOpenVaultPicker) {
-                        Icon(Icons.Outlined.FolderOpen, contentDescription = "Open Vault", tint = MaterialTheme.colorScheme.onSurface)
-                    }
-                    IconButton(onClick = onTriggerSync) {
-                        Icon(Icons.Default.Sync, contentDescription = "Sync Vault", tint = MaterialTheme.colorScheme.onSurface)
+                        Icon(Icons.Outlined.SnippetFolder, contentDescription = "Open Vault", tint = MaterialTheme.colorScheme.onSurface)
                     }
                 },
-                windowInsets = WindowInsets(0, 0, 0, 0),
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background
                 )
@@ -901,7 +1084,7 @@ fun NoteListScreen(
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
+                .padding(top = padding.calculateTopPadding())
                 .imePadding()
                 .padding(horizontal = 16.dp),
             contentPadding = PaddingValues(top = 8.dp, bottom = 80.dp),
@@ -926,7 +1109,7 @@ fun NoteListScreen(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "No notes found. Tap + to create a note.",
+                            text = "No recent notes yet. Open a note to get started.",
                             fontSize = 13.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -1384,7 +1567,7 @@ fun NoteEditorScreen(
                                 Icon(
                                     imageVector = if (isPreviewMode) Icons.Default.Edit else Icons.Outlined.Visibility,
                                     contentDescription = if (isPreviewMode) "Switch to Edit Mode" else "Switch to Preview Mode",
-                                    tint = if (isPreviewMode) MaterialTheme.colorScheme.onSurface else StitchAccentCoral
+                                    tint = if (isPreviewMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                                 )
                             }
 
@@ -1410,12 +1593,22 @@ fun NoteEditorScreen(
         ) {
             if (isPreviewMode) {
                 // Rendered preview: proper headings, tables, math, code, wikilinks
+                val onRatioChanged = remember {
+                    { ratio: Float ->
+                        if (kotlin.math.abs(savedScrollRatio - ratio) > 0.05f) {
+                            savedScrollRatio = ratio
+                        }
+                    }
+                }
+                val onWikilink = remember {
+                    { title: String -> onNavigateToWikilink(title) }
+                }
                 MarkdownPreview(
                     content = noteText,
                     headingAnchor = headingAnchor,
                     initialScrollRatio = savedScrollRatio,
-                    onScrollRatioChanged = { ratio -> savedScrollRatio = ratio },
-                    onWikilinkClick = { title -> onNavigateToWikilink(title) }
+                    onScrollRatioChanged = onRatioChanged,
+                    onWikilinkClick = onWikilink
                 )
             } else {
                 val flingInterceptor = remember {
@@ -1430,8 +1623,6 @@ fun NoteEditorScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .navigationBarsPadding()
-                        .imePadding()
                         .verticalScroll(editorScrollState)
                         .nestedScroll(flingInterceptor)
                         .padding(horizontal = 6.dp, vertical = 4.dp)
@@ -1502,6 +1693,30 @@ fun NoteEditorScreen(
                         text = "/",
                         fontSize = 22.sp,
                         fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+
+            // Floating Lock Exit Button for Focus Mode (TopEnd)
+            if (isFocusMode) {
+                IconButton(
+                    onClick = onToggleFocusMode,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .statusBarsPadding()
+                        .padding(top = 8.dp, end = 16.dp)
+                        .size(38.dp)
+                        .background(
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.9f),
+                            shape = RoundedCornerShape(50)
+                        )
+                        .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(50))
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Lock,
+                        contentDescription = "Exit Focus Mode",
+                        tint = StitchAccentCoral,
+                        modifier = Modifier.size(18.dp)
                     )
                 }
             }

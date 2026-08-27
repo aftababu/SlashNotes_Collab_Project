@@ -47,6 +47,8 @@ fun FolderTreeView(
     selectedFilename: String?,
     searchQuery: String = "",
     showAllFiles: Boolean = false,
+    isRefreshing: Boolean = false,
+    onRefreshNotes: (() -> Unit)? = null,
     onNavigateDir: (newRelativeDir: String) -> Unit,
     onSelectNote: (filename: String) -> Unit,
     onRenameClick: (item: FolderItem) -> Unit,
@@ -56,6 +58,7 @@ fun FolderTreeView(
     var expandedPaths by remember { mutableStateOf(setOf<String>()) }
     var rootItems by remember { mutableStateOf<List<FolderItem>>(emptyList()) }
     var searchResults by remember { mutableStateOf<List<NoteHeader>>(emptyList()) }
+    var isTreeLoading by remember { mutableStateOf(false) }
 
     // Lazily-loaded children per expanded folder path. Only expanded folders
     // are read from disk, and rows are flattened so the LazyColumn virtualizes.
@@ -67,13 +70,15 @@ fun FolderTreeView(
     var draggedItem by remember { mutableStateOf<FolderItem?>(null) }
     var dropTargetFolder by remember { mutableStateOf<String?>(null) }
 
-    val refreshFolderTree = remember {
+    val refreshFolderTree = remember(notesDir, currentRelativeDir, showAllFiles) {
         {
             scope.launch {
+                isTreeLoading = true
                 rootItems = withContext(Dispatchers.IO) {
                     listFolderContents(notesDir, currentRelativeDir, showAllFiles)
                 }
                 childrenCache = emptyMap()
+                isTreeLoading = false
             }
         }
     }
@@ -208,6 +213,62 @@ fun FolderTreeView(
                     }
                 }
             }
+        } else if (visibleRows.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(24.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Description,
+                        contentDescription = null,
+                        tint = StitchTextMuted,
+                        modifier = Modifier.size(44.dp)
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = "No notes found. Try refreshing.",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Button(
+                        onClick = {
+                            refreshFolderTree()
+                            onRefreshNotes?.invoke()
+                        },
+                        enabled = !isRefreshing && !isTreeLoading,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary
+                        ),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        if (isRefreshing || isTreeLoading) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.onPrimary
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Refreshing...", fontSize = 13.sp)
+                        } else {
+                            Icon(
+                                Icons.Default.Refresh,
+                                contentDescription = "Refresh",
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Refresh Notes", fontSize = 13.sp)
+                        }
+                    }
+                }
+            }
         } else {
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
@@ -266,44 +327,6 @@ fun FolderTreeView(
                         }
                     )
                 }
-            }
-        }
-
-        HorizontalDivider(color = StitchBorder)
-
-        // Trash Bin footer entry
-        Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { isTrashOpen = true },
-            color = MaterialTheme.colorScheme.background
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    Icons.Outlined.Delete,
-                    contentDescription = "Trash",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(modifier = Modifier.width(10.dp))
-                Text(
-                    text = "Trash Bin",
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.weight(1f)
-                )
-                Icon(
-                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(16.dp)
-                )
             }
         }
     }
@@ -585,7 +608,7 @@ fun MoveToDirectoryDialog(
 fun TrashBinSheet(
     notesDir: String,
     onDismiss: () -> Unit,
-    onChanged: () -> Unit
+    onChanged: () -> Unit = {}
 ) {
     val scope = rememberCoroutineScope()
     var trashItems by remember { mutableStateOf<List<FolderItem>>(emptyList()) }

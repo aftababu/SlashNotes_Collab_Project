@@ -13,7 +13,7 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:label="SlashNote"
         android:supportsRtl="true"
-        android:theme="@android:style/Theme.Material.Light.NoActionBar">
+        android:theme="@style/Theme.SlashNote.Starting">
         <activity
             android:name=".MainActivity"
             android:exported="true">
