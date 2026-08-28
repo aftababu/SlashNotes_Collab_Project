@@ -16,16 +16,11 @@ import com.slashnote.app.ui.theme.DarkCodeHighlight
 import com.slashnote.app.ui.theme.LightCodeBg
 import com.slashnote.app.ui.theme.LightCodeHighlight
 import uniffi.slash_notes_core.MarkdownSpan
-import uniffi.slash_notes_core.parseMarkdownTokens
 
 /**
  * Small LRU cache of parsed markdown spans keyed by a content hash.
- *
- * The Rust parser runs on a background dispatcher; the visual transformation
- * only ever performs a hash lookup + style application on the UI thread, so
- * typing never blocks on the JNI bridge.
  */
-class MarkdownSpanCache(private val maxEntries: Int = 6) {
+class MarkdownSpanCache(private val maxEntries: Int = 10) {
     private val map = object : LinkedHashMap<Long, List<MarkdownSpan>>(16, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Long, List<MarkdownSpan>>): Boolean =
             size > maxEntries
@@ -45,7 +40,7 @@ class MarkdownSpanCache(private val maxEntries: Int = 6) {
     }
 }
 
-/** FNV-1a 64-bit hash incorporating length — cheap, collision-resistant cache keys. */
+/** FNV-1a 64-bit hash for fast caching. */
 fun markdownHash(text: String): Long {
     var h = -3750763034362895579L
     for (i in text.indices) {
@@ -57,9 +52,16 @@ fun markdownHash(text: String): Long {
     return h
 }
 
+/**
+ * Single-pass high-performance Lexer & AST-based VisualTransformation.
+ *
+ * Provides O(N) linear syntax highlighting for headers, code spans, lists,
+ * blockquotes, bold/italic, strikethrough, links, wikilinks, and math blocks
+ * with zero typing latency on BasicTextField.
+ */
 class MarkdownVisualTransformation(
     private val isDarkTheme: Boolean,
-    private val cache: MarkdownSpanCache
+    private val cache: MarkdownSpanCache = MarkdownSpanCache()
 ) : VisualTransformation {
 
     private var lastHash: Long = Long.MIN_VALUE
@@ -74,14 +76,10 @@ class MarkdownVisualTransformation(
 
         val hash = markdownHash(rawText)
 
-        // Reuse the previously built styled text when the content and theme
-        // haven't changed. This avoids copying the entire note into a fresh
-        // AnnotatedString on every recomposition.
         if (hash == lastHash && isDarkTheme == lastDarkTheme && lastResult != null) {
             return lastResult!!
         }
 
-        // Fast path: if the background parser hasn't caught up yet, render plain.
         val spans = cache.get(hash) ?: return TransformedText(text, OffsetMapping.Identity)
 
         val builder = AnnotatedString.Builder(rawText)

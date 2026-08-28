@@ -3,37 +3,55 @@ package com.slashnote.app.ui.editor
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.RadioButtonUnchecked
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.magnifier
+import androidx.compose.foundation.text.selection.DisableSelection
+import androidx.compose.foundation.text.selection.LocalTextSelectionColors
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.text.selection.TextSelectionColors
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.slashnote.app.ui.theme.StitchAccentCoral
@@ -43,28 +61,135 @@ import com.slashnote.app.ui.theme.StitchCardBg
 import com.slashnote.app.ui.theme.StitchCodeBg
 import com.slashnote.app.ui.theme.StitchCodeHighlight
 import com.slashnote.app.ui.theme.StitchTextMuted
-
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
-
-/**
- * Compose-native Markdown renderer used in preview / read mode.
- *
- * Supports: headings, paragraphs, bold/italic/strikethrough, inline code,
- * links, wikilinks `[[note]]`, ordered/unordered/task lists, blockquotes,
- * tables, fenced code blocks (incl. mermaid), inline `$math$` and block `$$math$$`.
- */
-import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
-import androidx.compose.ui.graphics.graphicsLayer
+import kotlinx.coroutines.launch
 
 /**
- * Compose-native Markdown renderer used in preview / read mode.
+ * Interactive touch-draggable vertical fast-scroller overlay with stable thumb sizing.
+ */
+@Composable
+fun DraggableScrollbar(
+    state: LazyListState,
+    modifier: Modifier = Modifier,
+    thumbColor: Color = Color.Gray.copy(alpha = 0.7f),
+    thumbWidth: Dp = 4.dp,
+    trackWidth: Dp = 16.dp
+) {
+    val coroutineScope = rememberCoroutineScope()
+    var isDragging by remember { mutableStateOf(false) }
+
+    BoxWithConstraints(
+        modifier = modifier
+            .fillMaxHeight()
+            .width(trackWidth)
+            .pointerInput(state) {
+                detectVerticalDragGestures(
+                    onDragStart = { isDragging = true },
+                    onDragEnd = { isDragging = false },
+                    onDragCancel = { isDragging = false },
+                    onVerticalDrag = { change, _ ->
+                        change.consume()
+                        val totalItems = state.layoutInfo.totalItemsCount
+                        if (totalItems > 0) {
+                            val dragFraction = (change.position.y / size.height.toFloat()).coerceIn(0f, 1f)
+                            val targetItemIndex = (dragFraction * totalItems).toInt().coerceIn(0, totalItems - 1)
+                            coroutineScope.launch {
+                                state.scrollToItem(targetItemIndex)
+                            }
+                        }
+                    }
+                )
+            }
+    ) {
+        val totalItems = state.layoutInfo.totalItemsCount
+        if (totalItems > 1) {
+            val firstVisibleIndex = state.firstVisibleItemIndex
+            val thumbHeightRatio = (1f / totalItems.coerceAtLeast(1).toFloat()).coerceIn(0.12f, 0.25f)
+            val thumbHeight = maxHeight * thumbHeightRatio
+            val progress = (firstVisibleIndex.toFloat() / (totalItems - 1).coerceAtLeast(1).toFloat()).coerceIn(0f, 1f)
+            val maxTravel = maxHeight - thumbHeight
+            val offsetY = maxTravel * progress
+
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .offset(y = offsetY)
+                    .width(thumbWidth)
+                    .height(height = thumbHeight)
+                    .clip(CircleShape)
+                    .background(if (isDragging) thumbColor.copy(alpha = 0.95f) else thumbColor)
+            )
+        }
+    }
+}
+
+/**
+ * Interactive touch-draggable vertical fast-scroller overlay for ScrollState (Edit mode).
+ */
+@Composable
+fun DraggableEditorScrollbar(
+    state: androidx.compose.foundation.ScrollState,
+    modifier: Modifier = Modifier,
+    thumbColor: Color = Color.Gray.copy(alpha = 0.7f),
+    thumbWidth: Dp = 4.dp,
+    trackWidth: Dp = 16.dp
+) {
+    val coroutineScope = rememberCoroutineScope()
+    var isDragging by remember { mutableStateOf(false) }
+
+    BoxWithConstraints(
+        modifier = modifier
+            .fillMaxHeight()
+            .width(trackWidth)
+            .pointerInput(state) {
+                detectVerticalDragGestures(
+                    onDragStart = { isDragging = true },
+                    onDragEnd = { isDragging = false },
+                    onDragCancel = { isDragging = false },
+                    onVerticalDrag = { change, _ ->
+                        change.consume()
+                        val maxValue = state.maxValue
+                        if (maxValue > 0) {
+                            val dragFraction = (change.position.y / size.height.toFloat()).coerceIn(0f, 1f)
+                            val targetScrollY = (dragFraction * maxValue).toInt().coerceIn(0, maxValue)
+                            coroutineScope.launch {
+                                state.scrollTo(targetScrollY)
+                            }
+                        }
+                    }
+                )
+            }
+    ) {
+        val maxValue = state.maxValue
+        if (maxValue > 0) {
+            val thumbHeightRatio = 0.15f
+            val thumbHeight = maxHeight * thumbHeightRatio
+            val progress = (state.value.toFloat() / maxValue.toFloat()).coerceIn(0f, 1f)
+            val maxTravel = maxHeight - thumbHeight
+            val offsetY = maxTravel * progress
+
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .offset(y = offsetY)
+                    .width(thumbWidth)
+                    .height(height = thumbHeight)
+                    .clip(CircleShape)
+                    .background(if (isDragging) thumbColor.copy(alpha = 0.95f) else thumbColor)
+            )
+        }
+    }
+}
+
+/**
+ * Optimized Markdown Preview Renderer for Compose.
  *
- * Supports: headings, paragraphs, bold/italic/strikethrough, inline code,
- * links, wikilinks `[[note]]`, ordered/unordered/task lists, blockquotes,
- * tables, fenced code blocks (incl. mermaid), inline `$math$` and block `$$math$$`.
+ * Features:
+ * - Character-Offset Character Range AST Blocks
+ * - Synchronized Column Width GFM Table Grid Layout
+ * - Interactive Touch-Draggable Scrollbar Overlay
+ * - Soft Line Break Preservation (\n)
+ * - Hardware Layer Caching (graphicsLayer)
  */
 @Composable
 fun MarkdownPreview(
@@ -72,12 +197,11 @@ fun MarkdownPreview(
     modifier: Modifier = Modifier,
     headingAnchor: String? = null,
     initialScrollRatio: Float = 0f,
+    listState: LazyListState = rememberLazyListState(),
     onScrollRatioChanged: ((Float) -> Unit)? = null,
     onWikilinkClick: ((String) -> Unit)? = null
 ) {
-    // Pre-parse Markdown AST into immutable list remembered by content string
     val blocks = remember(content) { parseMarkdownBlocks(content) }
-    val listState = rememberLazyListState()
 
     val headingIndexMap = remember(blocks) {
         val map = mutableMapOf<String, Int>()
@@ -116,7 +240,6 @@ fun MarkdownPreview(
         }
     }
 
-    // Wrap scroll ratio observation in snapshotFlow & distinctUntilChanged to prevent recomposition on every scroll frame
     LaunchedEffect(listState, blocks) {
         snapshotFlow { listState.firstVisibleItemIndex }
             .distinctUntilChanged()
@@ -128,77 +251,106 @@ fun MarkdownPreview(
             }
     }
 
-    LazyColumn(
-        state = listState,
-        modifier = modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-        flingBehavior = androidx.compose.foundation.gestures.ScrollableDefaults.flingBehavior()
-    ) {
-        itemsIndexed(
-            items = blocks,
-            key = { _, block -> block.id }
-        ) { _, block ->
-            Box(
+    val isDarkTheme = isSystemInDarkTheme()
+    val cursorHandleColor = if (isDarkTheme) StitchAccentCoral else Color.Black
+
+    Box(modifier = modifier.fillMaxSize()) {
+        CompositionLocalProvider(
+            LocalTextSelectionColors provides TextSelectionColors(
+                handleColor = cursorHandleColor,
+                backgroundColor = cursorHandleColor.copy(alpha = 0.25f)
+            )
+        ) {
+            SelectionContainer(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .graphicsLayer {
-                        // Hardware layer rendering for 60/120fps flings
-                        clip = false
-                    }
+                    .fillMaxSize()
+                    .magnifier(
+                        sourceCenter = { Offset.Unspecified }
+                    )
             ) {
-                when (block) {
-                    is MdBlock.Heading -> HeadingBlock(block, content)
-                    is MdBlock.Paragraph -> ParagraphBlock(block, content, onWikilinkClick)
-                    is MdBlock.ListBlock -> ListBlock(block, content, onWikilinkClick)
-                    is MdBlock.Blockquote -> BlockquoteBlock(block, content, onWikilinkClick)
-                    is MdBlock.CodeBlock -> CodeBlockView(block)
-                    is MdBlock.MathBlock -> MathBlockView(block)
-                    is MdBlock.TableBlock -> TableBlock(block)
-                    is MdBlock.HorizontalRule -> HorizontalDivider(color = StitchBorder, thickness = 1.dp)
-                    is MdBlock.ListItem -> Unit
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(bottom = 80.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    flingBehavior = androidx.compose.foundation.gestures.ScrollableDefaults.flingBehavior()
+                ) {
+                    itemsIndexed(
+                        items = blocks,
+                        key = { _, block -> block.id }
+                    ) { _, block ->
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .graphicsLayer {
+                                    clip = false
+                                }
+                        ) {
+                            when (block) {
+                                is MdBlock.Heading -> HeadingBlock(block, content)
+                                is MdBlock.Paragraph -> ParagraphBlock(block, content, onWikilinkClick)
+                                is MdBlock.ListBlock -> ListBlock(block, content, onWikilinkClick)
+                                is MdBlock.Blockquote -> BlockquoteBlock(block, content, onWikilinkClick)
+                                is MdBlock.CodeBlock -> CodeBlockView(block)
+                                is MdBlock.MathBlock -> MathBlockView(block)
+                                is MdBlock.TableBlock -> TableBlock(block, content, onWikilinkClick)
+                                is MdBlock.HorizontalRule -> HorizontalDivider(color = StitchBorder.copy(alpha = 0.4f), thickness = 1.dp)
+                                is MdBlock.ListItem -> Unit
+                            }
+                        }
+                    }
+                    if (blocks.isEmpty()) {
+                        item(key = "empty_note") {
+                            Text("Empty note", color = StitchTextMuted, fontSize = 13.sp)
+                        }
+                    }
                 }
             }
         }
-        if (blocks.isEmpty()) {
-            item(key = "empty_note") {
-                Text("Empty note", color = StitchTextMuted, fontSize = 13.sp)
-            }
+
+        DisableSelection {
+            DraggableScrollbar(
+                state = listState,
+                modifier = Modifier.align(Alignment.CenterEnd)
+            )
         }
     }
 }
 
 // ---------------------------------------------------------------------------
-// Parsing model
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// Parsing model
+// Parsing model with character offset ranges
 // ---------------------------------------------------------------------------
 
 internal sealed class MdBlock {
     abstract val id: String
+    abstract val startOffset: Int
+    abstract val endOffset: Int
 
-    class Heading(override val id: String, val level: Int, val content: String) : MdBlock()
-    class Paragraph(override val id: String, val content: String) : MdBlock()
+    class Heading(override val id: String, override val startOffset: Int, override val endOffset: Int, val level: Int, val content: String) : MdBlock()
+    class Paragraph(override val id: String, override val startOffset: Int, override val endOffset: Int, val content: String) : MdBlock()
     class ListBlock(
         override val id: String,
+        override val startOffset: Int,
+        override val endOffset: Int,
         val ordered: Boolean,
         val items: List<ListItem>,
         val startNumber: Int
     ) : MdBlock()
 
-    class ListItem(override val id: String, val checked: Boolean?, val content: String) : MdBlock()
-    class Blockquote(override val id: String, val content: String) : MdBlock()
-    class CodeBlock(override val id: String, val language: String, val code: String) : MdBlock()
-    class MathBlock(override val id: String, val content: String) : MdBlock()
+    class ListItem(override val id: String, override val startOffset: Int, override val endOffset: Int, val checked: Boolean?, val content: String) : MdBlock()
+    class Blockquote(override val id: String, override val startOffset: Int, override val endOffset: Int, val content: String) : MdBlock()
+    class CodeBlock(override val id: String, override val startOffset: Int, override val endOffset: Int, val language: String, val code: String) : MdBlock()
+    class MathBlock(override val id: String, override val startOffset: Int, override val endOffset: Int, val content: String) : MdBlock()
     class TableBlock(
         override val id: String,
+        override val startOffset: Int,
+        override val endOffset: Int,
         val headers: List<String>,
         val rows: List<List<String>>,
         val alignments: List<Align>
     ) : MdBlock()
 
-    class HorizontalRule(override val id: String) : MdBlock()
+    class HorizontalRule(override val id: String, override val startOffset: Int, override val endOffset: Int) : MdBlock()
 }
 
 internal enum class Align { LEFT, CENTER, RIGHT }
@@ -209,7 +361,21 @@ internal fun parseMarkdownBlocks(source: String): List<MdBlock> {
     var i = 0
     val n = lines.size
 
+    val lineOffsets = IntArray(n)
+    var currCharOffset = 0
+    for (idx in 0 until n) {
+        lineOffsets[idx] = currCharOffset
+        currCharOffset += lines[idx].length + 1
+    }
+
     fun nextId(): String = "block_${blocks.size}"
+
+    fun getOffsets(startLine: Int, endLine: Int): Pair<Int, Int> {
+        val s = lineOffsets.getOrElse(startLine) { 0 }
+        val eLine = endLine.coerceIn(0, n - 1)
+        val e = lineOffsets[eLine] + lines[eLine].length
+        return Pair(s, e)
+    }
 
     fun isFenceStart(line: String): Boolean {
         val t = line.trimStart()
@@ -229,21 +395,20 @@ internal fun parseMarkdownBlocks(source: String): List<MdBlock> {
         val line = lines[i]
         val trimmed = line.trim()
 
-        // Blank line -> skip
         if (trimmed.isEmpty()) {
             i++
             continue
         }
 
-        // Horizontal rule
         if (trimmed.matches(Regex("^(\\*{3,}|-{3,}|_{3,})$"))) {
-            blocks.add(MdBlock.HorizontalRule(nextId()))
+            val (so, eo) = getOffsets(i, i)
+            blocks.add(MdBlock.HorizontalRule(nextId(), so, eo))
             i++
             continue
         }
 
-        // Fenced code block
         if (isFenceStart(line)) {
+            val startLine = i
             val fc = fenceChar(line)
             val fl = fenceLen(line)
             val lang = line.trimStart().substring(fl).trim().substringBefore(" ")
@@ -261,35 +426,36 @@ internal fun parseMarkdownBlocks(source: String): List<MdBlock> {
                 codeLines.add(l)
                 i++
             }
-            blocks.add(MdBlock.CodeBlock(nextId(), lang, codeLines.joinToString("\n")))
+            val (so, eo) = getOffsets(startLine, i - 1)
+            blocks.add(MdBlock.CodeBlock(nextId(), so, eo, lang, codeLines.joinToString("\n")))
             if (!closed) break
             continue
         }
 
-        // Indented code block (4+ spaces)
         if (line.startsWith("    ") || line.startsWith("\t")) {
+            val startLine = i
             val codeLines = mutableListOf<String>()
             while (i < n && (lines[i].startsWith("    ") || lines[i].startsWith("\t"))) {
                 codeLines.add(lines[i].trimStart(' ', '\t'))
                 i++
             }
-            blocks.add(MdBlock.CodeBlock(nextId(), "", codeLines.joinToString("\n")))
+            val (so, eo) = getOffsets(startLine, i - 1)
+            blocks.add(MdBlock.CodeBlock(nextId(), so, eo, "", codeLines.joinToString("\n")))
             continue
         }
 
-        // Block math: $$ ... $$ (multi-line or single-line)
         if (trimmed.startsWith("$$")) {
+            val startLine = i
             val mathLines = mutableListOf<String>()
-            // Case: "$$expr$$" on one line
             if (trimmed.length > 2 && trimmed.endsWith("$$") && trimmed.length >= 4) {
                 val inner = trimmed.substring(2, trimmed.length - 2)
                 if (inner.isNotEmpty()) {
-                    blocks.add(MdBlock.MathBlock(nextId(), inner))
+                    val (so, eo) = getOffsets(i, i)
+                    blocks.add(MdBlock.MathBlock(nextId(), so, eo, inner))
                     i++
                     continue
                 }
             }
-            // Multi-line block
             i++
             var closed = false
             while (i < n) {
@@ -303,61 +469,46 @@ internal fun parseMarkdownBlocks(source: String): List<MdBlock> {
             }
             val content = mathLines.joinToString("\n")
             if (content.isNotEmpty()) {
-                blocks.add(MdBlock.MathBlock(nextId(), content))
+                val (so, eo) = getOffsets(startLine, i - 1)
+                blocks.add(MdBlock.MathBlock(nextId(), so, eo, content))
             }
             if (!closed) break
             continue
         }
 
-        // Heading
         val headingMatch = Regex("^(#{1,6})\\s+(.*)$").find(trimmed)
         if (headingMatch != null) {
             val level = headingMatch.groupValues[1].length
-            blocks.add(MdBlock.Heading(nextId(), level, headingMatch.groupValues[2]))
+            val (so, eo) = getOffsets(i, i)
+            blocks.add(MdBlock.Heading(nextId(), so, eo, level, headingMatch.groupValues[2]))
             i++
             continue
         }
 
-        // Blockquote
         if (trimmed.startsWith(">")) {
+            val startLine = i
             val quoteLines = mutableListOf<String>()
             while (i < n && lines[i].trimStart().startsWith(">")) {
                 quoteLines.add(lines[i].trimStart().removePrefix(">").trimStart())
                 i++
             }
-            blocks.add(MdBlock.Blockquote(nextId(), quoteLines.joinToString("\n")))
+            val (so, eo) = getOffsets(startLine, i - 1)
+            blocks.add(MdBlock.Blockquote(nextId(), so, eo, quoteLines.joinToString("\n")))
             continue
         }
 
-        // Table
         if (trimmed.contains("|") && i + 1 < n) {
-            val next = lines[i + 1].trim()
-            if (next.matches(Regex("^\\|?\\s*:?-{3,}:?\\s*(\\|\\s*:?-{3,}:?\\s*)*\\|?$")) && next.contains("-")) {
-                val headerRow = splitTableRow(trimmed)
-                val alignRow = splitTableRow(next)
-                val alignments = alignRow.map { col ->
-                    val c = col.trim()
-                    when {
-                        c.startsWith(":") && c.endsWith(":") -> Align.CENTER
-                        c.endsWith(":") -> Align.RIGHT
-                        c.startsWith(":") -> Align.LEFT
-                        else -> Align.LEFT
-                    }
-                }
-                val rows = mutableListOf<List<String>>()
-                i += 2
-                while (i < n && lines[i].trim().isNotEmpty() && lines[i].contains("|")) {
-                    rows.add(splitTableRow(lines[i]))
-                    i++
-                }
-                blocks.add(MdBlock.TableBlock(nextId(), headerRow, rows, alignments))
+            val tableRes = tryParseTable(lines, i, lineOffsets)
+            if (tableRes != null) {
+                blocks.add(tableRes.first)
+                i = tableRes.second
                 continue
             }
         }
 
-        // List (ordered / unordered / task)
         val listMatch = Regex("^\\s*([-*+]|\\d+\\.)\\s+(.*)$").find(line)
         if (listMatch != null) {
+            val startLine = i
             val ordered = listMatch.groupValues[1].any { it.isDigit() }
             val startNumber = if (ordered) listMatch.groupValues[1].dropLast(1).toIntOrNull() ?: 1 else 1
             val items = mutableListOf<MdBlock.ListItem>()
@@ -365,11 +516,13 @@ internal fun parseMarkdownBlocks(source: String): List<MdBlock> {
             while (i < n) {
                 val m = Regex("^\\s*([-*+]|\\d+\\.)\\s+(.*)$").find(lines[i])
                 if (m == null) {
-                    // Continuation line (indented)
                     if (items.isNotEmpty() && (lines[i].startsWith("  ") || lines[i].startsWith("\t") || lines[i].isBlank())) {
                         val last = items[items.size - 1]
+                        val (iso, ieo) = getOffsets(i, i)
                         items[items.size - 1] = MdBlock.ListItem(
                             last.id,
+                            last.startOffset,
+                            ieo,
                             last.checked,
                             last.content + "\n" + lines[i].trim()
                         )
@@ -388,14 +541,16 @@ internal fun parseMarkdownBlocks(source: String): List<MdBlock> {
                     checked = taskMatch.groupValues[1] in listOf("x", "X")
                     content = taskMatch.groupValues[2]
                 }
-                items.add(MdBlock.ListItem("${listBlockId}_item_${items.size}", checked, content))
+                val (iso, ieo) = getOffsets(i, i)
+                items.add(MdBlock.ListItem("${listBlockId}_item_${items.size}", iso, ieo, checked, content))
                 i++
             }
-            blocks.add(MdBlock.ListBlock(listBlockId, ordered, items, startNumber))
+            val (so, eo) = getOffsets(startLine, i - 1)
+            blocks.add(MdBlock.ListBlock(listBlockId, so, eo, ordered, items, startNumber))
             continue
         }
 
-        // Paragraph (accumulate until blank or block start)
+        val startLine = i
         val paraLines = mutableListOf<String>()
         while (i < n) {
             val l = lines[i]
@@ -409,7 +564,8 @@ internal fun parseMarkdownBlocks(source: String): List<MdBlock> {
             i++
         }
         if (paraLines.isNotEmpty()) {
-            blocks.add(MdBlock.Paragraph(nextId(), paraLines.joinToString("\n")))
+            val (so, eo) = getOffsets(startLine, i - 1)
+            blocks.add(MdBlock.Paragraph(nextId(), so, eo, paraLines.joinToString("\n")))
         } else {
             i++
         }
@@ -418,22 +574,56 @@ internal fun parseMarkdownBlocks(source: String): List<MdBlock> {
     return blocks
 }
 
+private fun tryParseTable(lines: List<String>, startIdx: Int, lineOffsets: IntArray): Pair<MdBlock.TableBlock, Int>? {
+    val line = lines[startIdx].trim()
+    if (!line.contains("|") || startIdx + 1 >= lines.size) return null
+
+    val delimiterLine = lines[startIdx + 1].trim()
+    if (!delimiterLine.contains("-") || !delimiterLine.contains("|")) return null
+
+    val headerCols = splitTableRow(line)
+    if (headerCols.isEmpty()) return null
+
+    val alignCols = splitTableRow(delimiterLine)
+    val alignments = headerCols.indices.map { idx ->
+        val raw = alignCols.getOrNull(idx)?.trim() ?: ""
+        when {
+            raw.startsWith(":") && raw.endsWith(":") -> Align.CENTER
+            raw.endsWith(":") -> Align.RIGHT
+            raw.startsWith(":") -> Align.LEFT
+            else -> Align.LEFT
+        }
+    }
+
+    val rows = mutableListOf<List<String>>()
+    var curr = startIdx + 2
+    while (curr < lines.size) {
+        val rowLine = lines[curr].trim()
+        if (rowLine.isEmpty() || !rowLine.contains("|")) break
+        val rowCells = splitTableRow(rowLine)
+        if (rowCells.isNotEmpty()) {
+            rows.add(rowCells)
+        }
+        curr++
+    }
+
+    val n = lines.size
+    val so = lineOffsets.getOrElse(startIdx) { 0 }
+    val endLineIdx = (curr - 1).coerceIn(0, n - 1)
+    val eo = lineOffsets[endLineIdx] + lines[endLineIdx].length
+
+    return Pair(MdBlock.TableBlock("table_$startIdx", so, eo, headerCols, rows, alignments), curr)
+}
+
+/** Split cells using unescaped pipe regex (?<!\\)\| */
 private fun splitTableRow(row: String): List<String> {
     var s = row.trim()
     if (s.startsWith("|")) s = s.substring(1)
     if (s.endsWith("|")) s = s.substring(0, s.length - 1)
-    val cols = mutableListOf<String>()
-    var cur = StringBuilder()
-    var inCode = false
-    for (c in s) {
-        when {
-            c == '`' -> { inCode = !inCode; cur.append(c) }
-            c == '|' && !inCode -> { cols.add(cur.toString().trim()); cur = StringBuilder() }
-            else -> cur.append(c)
-        }
+    val split = s.split(Regex("(?<!\\\\)\\|"))
+    return split.map { cell ->
+        cell.trim().replace("\\|", "|")
     }
-    cols.add(cur.toString().trim())
-    return cols
 }
 
 // ---------------------------------------------------------------------------
@@ -457,7 +647,8 @@ private fun HeadingBlock(block: MdBlock.Heading, raw: String) {
         fontSize = size,
         fontWeight = FontWeight.Bold,
         color = MaterialTheme.colorScheme.onSurface,
-        lineHeight = size * 1.25f
+        lineHeight = size * 1.25f,
+        modifier = Modifier.fillMaxWidth()
     )
 }
 
@@ -465,6 +656,7 @@ private fun HeadingBlock(block: MdBlock.Heading, raw: String) {
 private fun ClickableMarkdownText(
     annotatedString: AnnotatedString,
     fontSize: androidx.compose.ui.unit.TextUnit = 14.sp,
+    fontWeight: FontWeight = FontWeight.Normal,
     lineHeight: androidx.compose.ui.unit.TextUnit = 21.sp,
     color: Color = MaterialTheme.colorScheme.onSurface,
     onWikilinkClick: ((String) -> Unit)? = null,
@@ -475,6 +667,7 @@ private fun ClickableMarkdownText(
         text = annotatedString,
         style = androidx.compose.ui.text.TextStyle(
             fontSize = fontSize,
+            fontWeight = fontWeight,
             lineHeight = lineHeight,
             color = color
         ),
@@ -498,13 +691,17 @@ private fun ParagraphBlock(block: MdBlock.Paragraph, raw: String, onWikilinkClic
         fontSize = 14.sp,
         lineHeight = 21.sp,
         color = MaterialTheme.colorScheme.onSurface,
-        onWikilinkClick = onWikilinkClick
+        onWikilinkClick = onWikilinkClick,
+        modifier = Modifier.fillMaxWidth()
     )
 }
 
 @Composable
 private fun ListBlock(block: MdBlock.ListBlock, raw: String, onWikilinkClick: ((String) -> Unit)?) {
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
         block.items.forEachIndexed { index, item ->
             val annotatedItem = remember(item.content, raw) {
                 inlineMarkdown(item.content, raw)
@@ -513,40 +710,39 @@ private fun ListBlock(block: MdBlock.ListBlock, raw: String, onWikilinkClick: ((
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.Top
             ) {
-                // Marker / bullet
                 Box(modifier = Modifier.width(22.dp)) {
                     when {
                         item.checked != null -> {
                             Icon(
-                                imageVector = if (item.checked == true) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
+                                imageVector = if (item.checked) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
                                 contentDescription = null,
-                                tint = if (item.checked == true) StitchAccentCoral else StitchTextMuted,
-                                modifier = Modifier.size(16.dp).padding(top = 2.dp)
+                                tint = if (item.checked) StitchAccentCoral else StitchTextMuted,
+                                modifier = Modifier.size(16.dp)
                             )
                         }
                         block.ordered -> {
                             Text(
                                 text = "${block.startNumber + index}.",
-                                color = StitchTextMuted,
-                                fontSize = 13.sp,
-                                modifier = Modifier.width(22.dp).padding(top = 1.dp)
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
                             )
                         }
                         else -> {
-                            Box(
-                                modifier = Modifier
-                                    .size(6.dp)
-                                    .padding(top = 4.dp)
-                                    .background(StitchAccentCoral, RoundedCornerShape(50))
+                            Text(
+                                text = "•",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = StitchAccentCoral
                             )
                         }
                     }
                 }
-                Spacer(modifier = Modifier.width(8.dp))
+                Spacer(modifier = Modifier.width(6.dp))
                 ClickableMarkdownText(
                     annotatedString = annotatedItem,
                     fontSize = 14.sp,
-                    lineHeight = 21.sp,
+                    lineHeight = 20.sp,
                     color = MaterialTheme.colorScheme.onSurface,
                     onWikilinkClick = onWikilinkClick,
                     modifier = Modifier.weight(1f)
@@ -561,266 +757,319 @@ private fun BlockquoteBlock(block: MdBlock.Blockquote, raw: String, onWikilinkCl
     val annotated = remember(block.content, raw) {
         inlineMarkdown(block.content, raw)
     }
-    Row(modifier = Modifier.fillMaxWidth()) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+    ) {
         Box(
             modifier = Modifier
-                .width(3.dp)
+                .width(4.dp)
                 .fillMaxHeight()
                 .background(StitchAccentCoral, RoundedCornerShape(2.dp))
         )
         Spacer(modifier = Modifier.width(10.dp))
-        Text(
-            text = annotated,
-            fontSize = 13.sp,
-            lineHeight = 19.sp,
-            fontStyle = FontStyle.Italic,
-            color = StitchTextMuted
+        ClickableMarkdownText(
+            annotatedString = annotated,
+            fontSize = 14.sp,
+            lineHeight = 21.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            onWikilinkClick = onWikilinkClick,
+            modifier = Modifier.weight(1f)
         )
-    }
-}
-
-private object SyntaxHighlighter {
-    private val stringColor = Color(0xFF10B981) // Green
-    private val keywordColor = Color(0xFF3B82F6) // Blue
-    private val numberColor = Color(0xFFF59E0B) // Orange
-    private val commentColor = Color(0xFF6B7280) // Gray
-    private val typeColor = Color(0xFF8B5CF6) // Purple
-
-    private val stringPattern = Regex("""(".*?"|'.*?'|`.*?`)""")
-    private val keywordPattern = Regex("""\b(fun|const|let|var|val|if|else|return|class|interface|for|while|import|export|function|public|private|protected|static|extends|implements|fn|mut|impl|struct|enum|match)\b""")
-    private val numberPattern = Regex("""\b(\d+)\b""")
-    private val commentPattern = Regex("""(//.*|/\*[\s\S]*?\*/)""")
-    private val typePattern = Regex("""\b([A-Z][a-zA-Z0-9_]*)\b""")
-
-    fun highlight(code: String): AnnotatedString {
-        val builder = AnnotatedString.Builder(code)
-        
-        fun applyPattern(pattern: Regex, color: Color) {
-            pattern.findAll(code).forEach { match ->
-                builder.addStyle(SpanStyle(color = color), match.range.first, match.range.last + 1)
-            }
-        }
-
-        applyPattern(typePattern, typeColor)
-        applyPattern(keywordPattern, keywordColor)
-        applyPattern(numberPattern, numberColor)
-        applyPattern(stringPattern, stringColor)
-        applyPattern(commentPattern, commentColor)
-
-        return builder.toAnnotatedString()
     }
 }
 
 @Composable
 private fun CodeBlockView(block: MdBlock.CodeBlock) {
     val clipboardManager = LocalClipboardManager.current
-    val highlightedText = remember(block.code) {
-        SyntaxHighlighter.highlight(block.code)
-    }
-
-    Column(
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = StitchCodeBg,
+        border = BorderStroke(1.dp, StitchBorder),
         modifier = Modifier
             .fillMaxWidth()
             .defaultMinSize(minHeight = 48.dp)
-            .background(StitchCodeBg, RoundedCornerShape(8.dp))
-            .padding(12.dp)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = if (block.language.isNotBlank()) block.language.uppercase() else "CODE",
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Bold,
-                color = StitchAccentCoral,
-                letterSpacing = 1.sp
-            )
-            IconButton(
-                onClick = {
-                    clipboardManager.setText(AnnotatedString(block.code))
-                },
-                modifier = Modifier.size(24.dp)
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    imageVector = Icons.Default.ContentCopy,
-                    contentDescription = "Copy code",
-                    tint = StitchTextMuted,
-                    modifier = Modifier.size(14.dp)
+                Text(
+                    text = block.language.ifEmpty { "code" }.uppercase(),
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = StitchTextMuted
                 )
-            }
-        }
-        Spacer(modifier = Modifier.height(6.dp))
-
-        Text(
-            text = highlightedText,
-            fontFamily = FontFamily.Monospace,
-            fontSize = 12.sp,
-            lineHeight = 17.sp,
-            color = StitchCodeHighlight,
-            modifier = Modifier.horizontalScroll(rememberScrollState())
-        )
-    }
-}
-
-/** Centered block math renderer: `$$ ... $$` (multi-line TeX). */
-@Composable
-private fun MathBlockView(block: MdBlock.MathBlock) {
-    val mathLines = remember(block.content) {
-        block.content.split("\n").map { latexToUnicode(it) }
-    }
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .defaultMinSize(minHeight = 40.dp)
-            .background(StitchCodeBg, RoundedCornerShape(8.dp))
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        mathLines.forEach { lineText ->
-            Text(
-                text = lineText,
-                fontFamily = FontFamily.Monospace,
-                fontSize = 15.sp,
-                lineHeight = 22.sp,
-                color = Color(0xFFC084FC),
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center
-            )
-        }
-    }
-}
-
-@Composable
-private fun TableBlock(block: MdBlock.TableBlock) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(StitchCardBg, RoundedCornerShape(8.dp))
-            .border(1.dp, StitchBorder, RoundedCornerShape(8.dp))
-            .horizontalScroll(rememberScrollState())
-    ) {
-        // Header row
-        Row(modifier = Modifier.background(StitchBackground)) {
-            block.headers.forEachIndexed { idx, h ->
-                TableCell(
-                    text = inlinePlain(h),
-                    isHeader = true,
-                    align = block.alignments.getOrElse(idx) { Align.LEFT }
-                )
-            }
-        }
-        HorizontalDivider(color = StitchBorder, thickness = 1.dp)
-        // Body rows
-        block.rows.forEach { row ->
-            Row {
-                block.headers.forEachIndexed { idx, _ ->
-                    TableCell(
-                        text = inlinePlain(row.getOrElse(idx) { "" }),
-                        isHeader = false,
-                        align = block.alignments.getOrElse(idx) { Align.LEFT }
-                    )
+                DisableSelection {
+                    IconButton(
+                        onClick = {
+                            clipboardManager.setText(AnnotatedString(block.code))
+                        },
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.ContentCopy,
+                            contentDescription = "Copy code",
+                            tint = StitchTextMuted,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
                 }
             }
-            HorizontalDivider(color = StitchBorder.copy(alpha = 0.4f), thickness = 0.5.dp)
+            Spacer(modifier = Modifier.height(6.dp))
+
+            Text(
+                text = block.code,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 12.sp,
+                lineHeight = 17.sp,
+                color = StitchCodeHighlight,
+                modifier = Modifier.horizontalScroll(rememberScrollState())
+            )
         }
     }
 }
 
 @Composable
-private fun androidx.compose.foundation.layout.RowScope.TableCell(
-    text: String,
+private fun MathBlockView(block: MdBlock.MathBlock) {
+    val mathText = remember(block.content) {
+        latexToUnicode(block.content)
+    }
+
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = StitchCodeBg,
+        border = BorderStroke(1.dp, Color(0xFFC084FC).copy(alpha = 0.3f)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .defaultMinSize(minHeight = 44.dp)
+            .padding(vertical = 4.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            mathText.split("\n").forEach { lineText ->
+                Text(
+                    text = lineText,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 15.sp,
+                    lineHeight = 22.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = Color(0xFFC084FC),
+                    textAlign = TextAlign.Center
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun TableBlock(block: MdBlock.TableBlock, raw: String, onWikilinkClick: ((String) -> Unit)?) {
+    val columnWidths = remember(block) {
+        val colCount = maxOf(block.headers.size, block.rows.maxOfOrNull { it.size } ?: 0)
+        (0 until colCount).map { colIndex ->
+            val maxLen = maxOf(
+                block.headers.getOrNull(colIndex)?.length ?: 0,
+                block.rows.maxOfOrNull { it.getOrNull(colIndex)?.length ?: 0 } ?: 0
+            )
+            (maxLen * 10).coerceIn(100, 260).dp
+        }
+    }
+
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = StitchCardBg,
+        border = BorderStroke(1.dp, StitchBorder),
+        modifier = Modifier
+            .fillMaxWidth()
+            .defaultMinSize(minHeight = 60.dp)
+            .padding(vertical = 4.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+        ) {
+            Column {
+                Row(
+                    modifier = Modifier.background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+                ) {
+                    block.headers.forEachIndexed { colIndex, h ->
+                        val width = columnWidths.getOrElse(colIndex) { 120.dp }
+                        val annotatedHeader = remember(h, raw) { inlineMarkdown(h, raw) }
+                        TableCell(
+                            annotatedText = annotatedHeader,
+                            isHeader = true,
+                            width = width,
+                            align = block.alignments.getOrElse(colIndex) { Align.LEFT },
+                            onWikilinkClick = onWikilinkClick
+                        )
+                    }
+                }
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant, thickness = 1.dp)
+
+                block.rows.forEachIndexed { rowIndex, row ->
+                    Row {
+                        block.headers.indices.forEach { colIndex ->
+                            val cellText = row.getOrElse(colIndex) { "" }
+                            val width = columnWidths.getOrElse(colIndex) { 120.dp }
+                            val annotatedCell = remember(cellText, raw) { inlineMarkdown(cellText, raw) }
+                            TableCell(
+                                annotatedText = annotatedCell,
+                                isHeader = false,
+                                width = width,
+                                align = block.alignments.getOrElse(colIndex) { Align.LEFT },
+                                onWikilinkClick = onWikilinkClick
+                            )
+                        }
+                    }
+                    if (rowIndex < block.rows.size - 1) {
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f), thickness = 0.5.dp)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TableCell(
+    annotatedText: AnnotatedString,
     isHeader: Boolean,
-    align: Align
+    width: Dp,
+    align: Align,
+    onWikilinkClick: ((String) -> Unit)?
 ) {
     Box(
         modifier = Modifier
-            .widthIn(min = 110.dp)
-            .weight(1f)
-            .padding(horizontal = 10.dp, vertical = 8.dp),
+            .width(width)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
         contentAlignment = when (align) {
             Align.LEFT -> Alignment.CenterStart
             Align.CENTER -> Alignment.Center
             Align.RIGHT -> Alignment.CenterEnd
         }
     ) {
-        Text(
-            text = text,
+        ClickableMarkdownText(
+            annotatedString = annotatedText,
             fontSize = if (isHeader) 13.sp else 12.sp,
             fontWeight = if (isHeader) FontWeight.Bold else FontWeight.Normal,
-            color = if (isHeader) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 2
+            lineHeight = 18.sp,
+            color = MaterialTheme.colorScheme.onSurface,
+            onWikilinkClick = onWikilinkClick
         )
     }
 }
 
 // ---------------------------------------------------------------------------
-// Inline markdown (bold, italic, strike, code, links, wikilinks, math)
+// Inline markdown parsing
 // ---------------------------------------------------------------------------
+
+internal fun inlineMarkdown(text: String, rawFull: String): AnnotatedString {
+    return buildAnnotatedString {
+        var last = 0
+        INLINE_PATTERN.findAll(text).forEach { m ->
+            if (m.range.first > last) {
+                append(text.substring(last, m.range.first))
+            }
+            val groups = m.groups
+            when {
+                groups[1] != null -> {
+                    val rawTarget = groups[1]!!.value
+                    val target = rawTarget.trim()
+                    val label = if (target.contains("|")) target.substringAfter("|").trim() else target
+                    pushStringAnnotation(tag = "WIKILINK", annotation = target)
+                    withStyle(SpanStyle(color = Color(0xFF2DD4BF), fontWeight = FontWeight.Medium, textDecoration = TextDecoration.Underline)) {
+                        append(label)
+                    }
+                    pop()
+                }
+                groups[2] != null -> {
+                    val math = latexToUnicode(groups[2]!!.value)
+                    withStyle(SpanStyle(fontFamily = FontFamily.Monospace, color = Color(0xFFC084FC))) {
+                        append(math)
+                    }
+                }
+                groups[3] != null -> {
+                    val math = latexToUnicode(groups[3]!!.value)
+                    withStyle(SpanStyle(fontFamily = FontFamily.Monospace, color = Color(0xFFC084FC))) {
+                        append(math)
+                    }
+                }
+                groups[4] != null -> {
+                    withStyle(SpanStyle(fontFamily = FontFamily.Monospace, color = StitchCodeHighlight, background = StitchCodeBg)) {
+                        append(groups[4]!!.value)
+                    }
+                }
+                groups[5] != null && groups[6] != null -> {
+                    val label = groups[5]!!.value
+                    val url = groups[6]!!.value
+                    pushStringAnnotation(tag = "URL", annotation = url)
+                    withStyle(SpanStyle(color = Color(0xFF3B82F6), textDecoration = TextDecoration.Underline)) {
+                        append(label)
+                    }
+                    pop()
+                }
+                groups[7] != null && groups[8] != null -> {
+                    withStyle(SpanStyle(fontWeight = FontWeight.Bold)) {
+                        append(groups[8]!!.value)
+                    }
+                }
+                groups[9] != null && groups[10] != null -> {
+                    withStyle(SpanStyle(fontStyle = FontStyle.Italic)) {
+                        append(groups[10]!!.value)
+                    }
+                }
+                groups[11] != null && groups[12] != null -> {
+                    withStyle(SpanStyle(textDecoration = TextDecoration.LineThrough)) {
+                        append(groups[12]!!.value)
+                    }
+                }
+                else -> append(m.value)
+            }
+            last = m.range.last + 1
+        }
+        if (last < text.length) {
+            append(text.substring(last))
+        }
+    }
+}
+
+internal fun inlinePlain(text: String): String {
+    return INLINE_PATTERN.replace(text) { m ->
+        val g = m.groups
+        when {
+            g[1] != null -> g[1]!!.value
+            g[2] != null -> latexToUnicode(g[2]!!.value)
+            g[3] != null -> latexToUnicode(g[3]!!.value)
+            g[4] != null -> g[4]!!.value
+            g[5] != null -> g[5]!!.value
+            g[8] != null -> g[8]!!.value
+            g[10] != null -> g[10]!!.value
+            g[12] != null -> g[12]!!.value
+            else -> m.value
+        }
+    }
+}
 
 private val INLINE_PATTERN = Regex(
-    "\\[\\[([^\\]]+)\\]\\]|" + // wikilink
-        "\\$\\$([^$]+)\\$\\$|" + // inline math (double)
-        "\\$([^$\\n]+)\\$|" + // inline math (single)
-        "`([^`]+)`|" + // inline code
-        "\\[([^\\]]+)\\]\\(([^)]+)\\)|" + // link
-        "(\\*\\*|__)(.+?)\\1|" + // bold
-        "(\\*|_)(.+?)\\1|" + // italic
-        "(~~)(.+?)\\1" // strikethrough
+    "\\[\\[([^\\]]+)\\]\\]|" +
+        "\\$\\$([^$]+)\\$\\$|" +
+        "\\$([^$\\n]+)\\$|" +
+        "`([^`]+)`|" +
+        "\\[([^\\]]+)\\]\\(([^)]+)\\)|" +
+        "(\\*\\*|__)(.+?)\\1|" +
+        "(\\*|_)(.+?)\\1|" +
+        "(~~)(.+?)\\1"
 )
 
-// ---------------------------------------------------------------------------
-// TeX -> Unicode math conversion (lightweight, native Compose)
-// ---------------------------------------------------------------------------
-
-private val GREEK_LETTERS = mapOf(
-    "alpha" to "α", "beta" to "β", "gamma" to "γ", "delta" to "δ",
-    "epsilon" to "ε", "varepsilon" to "ϵ", "zeta" to "ζ", "eta" to "η",
-    "theta" to "θ", "vartheta" to "ϑ", "iota" to "ι", "kappa" to "κ",
-    "lambda" to "λ", "mu" to "μ", "nu" to "ν", "xi" to "ξ",
-    "pi" to "π", "varpi" to "ϖ", "rho" to "ρ", "varrho" to "ϱ",
-    "sigma" to "σ", "varsigma" to "ς", "tau" to "τ", "upsilon" to "υ",
-    "phi" to "φ", "varphi" to "ϕ", "chi" to "χ", "psi" to "ψ", "omega" to "ω",
-    "Gamma" to "Γ", "Delta" to "Δ", "Theta" to "Θ", "Lambda" to "Λ",
-    "Xi" to "Ξ", "Pi" to "Π", "Sigma" to "Σ", "Upsilon" to "Υ",
-    "Phi" to "Φ", "Psi" to "Ψ", "Omega" to "Ω"
-)
-
-private val TEX_SYMBOLS = mapOf(
-    "sum" to "∑", "prod" to "∏", "coprod" to "∐", "int" to "∫",
-    "oint" to "∮", "iint" to "∬", "iiint" to "∭",
-    "lfloor" to "⌊", "rfloor" to "⌋", "lceil" to "⌈", "rceil" to "⌉",
-    "langle" to "⟨", "rangle" to "⟩",
-    "lvert" to "|", "rvert" to "|", "lVert" to "‖", "rVert" to "‖",
-    "sqrt" to "√", "infty" to "∞", "partial" to "∂", "nabla" to "∇",
-    "forall" to "∀", "exists" to "∃", "nexists" to "∄", "neg" to "¬",
-    "emptyset" to "∅", "varnothing" to "∅", "aleph" to "ℵ",
-    "in" to "∈", "notin" to "∉", "ni" to "∋", "subset" to "⊂",
-    "supset" to "⊃", "subseteq" to "⊆", "supseteq" to "⊇",
-    "cup" to "∪", "cap" to "∩", "setminus" to "∖", "oplus" to "⊕",
-    "ominus" to "⊖", "otimes" to "⊗", "odot" to "⊙", "dagger" to "†",
-    "ddagger" to "‡", "cdot" to "⋅", "times" to "×", "div" to "÷",
-    "pm" to "±", "mp" to "∓", "ast" to "∗", "star" to "⋆", "circ" to "∘",
-    "bullet" to "•", "dots" to "…", "ldots" to "…", "cdots" to "⋯",
-    "vdots" to "⋮", "ddots" to "⋱", "equiv" to "≡", "cong" to "≅",
-    "approx" to "≈", "sim" to "∼", "simeq" to "≃", "propto" to "∝",
-    "le" to "≤", "leq" to "≤", "ge" to "≥", "geq" to "≥",
-    "ll" to "≪", "gg" to "≫", "ne" to "≠", "neq" to "≠",
-    "leftarrow" to "←", "rightarrow" to "→", "leftrightarrow" to "↔",
-    "Leftarrow" to "⇐", "Rightarrow" to "⇒", "Leftrightarrow" to "⇔",
-    "uparrow" to "↑", "downarrow" to "↓", "mapsto" to "↦",
-    "to" to "→", "gets" to "←", "longrightarrow" to "⟶",
-    "longleftarrow" to "⟵", "longmapsto" to "⟼",
-    "triangle" to "△", "angle" to "∠", "perp" to "⊥", "parallel" to "∥",
-    "therefore" to "∴", "because" to "∵", "degree" to "°", "prime" to "′",
-    "ell" to "ℓ", "hbar" to "ℏ", "imath" to "ı", "jmath" to "ȷ",
-    "Re" to "ℜ", "Im" to "ℑ", "wp" to "℘", "clubsuit" to "♣",
-    "diamondsuit" to "♦", "heartsuit" to "♥", "spadesuit" to "♠",
-    "checkmark" to "✓", "circledR" to "®", "circledS" to "Ⓢ"
-)
-
-/** Single-letter math alphabets: \mathbb{R}, \mathcal{L}, \mathscr{M}, \mathrm{d} */
 private val BLACKBOARD_BOLD: Map<Char, String> = mapOf(
     'A' to "𝔸", 'B' to "𝔹", 'C' to "ℂ", 'D' to "𝔻", 'E' to "𝔼",
     'F' to "𝔽", 'G' to "𝔾", 'H' to "ℍ", 'I' to "𝕀", 'J' to "𝕁",
@@ -832,40 +1081,49 @@ private val BLACKBOARD_BOLD: Map<Char, String> = mapOf(
 private val SCRIPT_LETTERS: Map<Char, String> = mapOf(
     'A' to "𝒜", 'B' to "ℬ", 'C' to "𝒞", 'D' to "𝒟", 'E' to "ℰ",
     'F' to "ℱ", 'G' to "𝒢", 'H' to "ℋ", 'I' to "ℐ", 'J' to "𝒥",
-    'K' to "𝒦", 'L' to "ℒ", 'M' to "ℳ", 'N' to "𝒩", 'O' to "𝒪",
-    'P' to "𝒫", 'Q' to "𝒬", 'R' to "ℛ", 'S' to "𝒮", 'T' to "𝒯",
-    'U' to "𝒰", 'V' to "𝒱", 'W' to "𝒲", 'X' to "𝒳", 'Y' to "𝒴", 'Z' to "𝒵"
+    'K' to "𝒦", 'L' to "ℒ", 'M' to "𝕄", 'N' to "𝒩", 'O' to "𝒪",
+    'P' to "𝒫", 'Q' to "𝒬", 'R' to "ℛ", 'S' to "𝒮", 'T' to "ℛ",
+    'U' to "𝕌", 'V' to "𝕍", 'W' to "𝕎", 'X' to "𝕏", 'Y' to "𝕐", 'Z' to "ℤ"
 )
 
-private val SUBSCRIPTS = mapOf(
+private val GREEK_MAP = mapOf(
+    "alpha" to "α", "beta" to "β", "gamma" to "γ", "delta" to "δ",
+    "epsilon" to "ε", "zeta" to "ζ", "eta" to "η", "theta" to "θ",
+    "iota" to "ι", "kappa" to "κ", "lambda" to "λ", "mu" to "μ",
+    "nu" to "ν", "xi" to "ξ", "pi" to "π", "rho" to "ρ",
+    "sigma" to "σ", "tau" to "τ", "upsilon" to "υ", "phi" to "φ",
+    "chi" to "χ", "psi" to "ψ", "omega" to "ω",
+    "Gamma" to "Γ", "Delta" to "Δ", "Theta" to "Θ", "Lambda" to "Λ",
+    "Xi" to "Ξ", "Pi" to "Π", "Sigma" to "Σ", "Upsilon" to "Υ",
+    "Phi" to "Φ", "Psi" to "Ψ", "Omega" to "Ω"
+)
+
+private val SYMBOL_MAP = mapOf(
+    "approx" to "≈", "times" to "×", "cdot" to "⋅", "pm" to "±", "mp" to "∓",
+    "div" to "÷", "le" to "≤", "leq" to "≤", "ge" to "≥", "geq" to "≥",
+    "ne" to "≠", "neq" to "≠", "infty" to "∞", "int" to "∫", "sum" to "∑",
+    "prod" to "∏", "sqrt" to "√", "to" to "→", "rightarrow" to "→",
+    "leftarrow" to "←", "Leftrightarrow" to "⇔", "in" to "∈", "notin" to "∉",
+    "subset" to "⊂", "supset" to "⊃", "cup" to "∪", "cap" to "∩",
+    "partial" to "∂", "nabla" to "∇", "forall" to "∀", "exists" to "∃",
+    "equiv" to "≡", "cong" to "≅", "sim" to "∼"
+)
+
+private val SUB_MAP = mapOf(
     '0' to '₀', '1' to '₁', '2' to '₂', '3' to '₃', '4' to '₄',
     '5' to '₅', '6' to '₆', '7' to '₇', '8' to '₈', '9' to '₉',
     '+' to '₊', '-' to '₋', '=' to '₌', '(' to '₍', ')' to '₎',
-    'a' to 'ₐ', 'e' to 'ₑ', 'o' to 'ₒ', 'x' to 'ₓ', 'i' to 'ᵢ',
-    'j' to 'ⱼ', 'n' to 'ₙ', 'm' to 'ₘ', 'k' to 'ₖ', 'l' to 'ₗ',
-    'p' to 'ₚ', 's' to 'ₛ', 't' to 'ₜ', 'r' to 'ᵣ', 'u' to 'ᵤ',
-    'v' to 'ᵥ', 'h' to 'ₕ', 'β' to 'ᵦ', 'γ' to 'ᵧ', 'ρ' to 'ᵨ',
-    'φ' to 'ᵩ', 'χ' to 'ᵪ'
+    'i' to 'ᵢ', 'j' to 'ⱼ', 'n' to 'ₙ', 'm' to 'ₘ', 'k' to 'ₖ',
+    'x' to 'ₓ', 'y' to 'ᵧ', 'a' to 'ₐ', 'e' to 'ₑ', 'o' to 'ₒ'
 )
 
-private val SUPERSCRIPTS = mapOf(
+private val SUPER_MAP = mapOf(
     '0' to '⁰', '1' to '¹', '2' to '²', '3' to '³', '4' to '⁴',
     '5' to '⁵', '6' to '⁶', '7' to '⁷', '8' to '⁸', '9' to '⁹',
     '+' to '⁺', '-' to '⁻', '=' to '⁼', '(' to '⁽', ')' to '⁾',
-    'n' to 'ⁿ', 'i' to 'ⁱ', 'a' to 'ᵃ', 'b' to 'ᵇ', 'c' to 'ᶜ',
-    'd' to 'ᵈ', 'e' to 'ᵉ', 'f' to 'ᶠ', 'g' to 'ᵍ', 'h' to 'ʰ',
-    'j' to 'ʲ', 'k' to 'ᵏ', 'l' to 'ˡ', 'm' to 'ᵐ', 'o' to 'ᵒ',
-    'p' to 'ᵖ', 'r' to 'ʳ', 's' to 'ˢ', 't' to 'ᵗ', 'u' to 'ᵘ',
-    'v' to 'ᵛ', 'w' to 'ʷ', 'x' to 'ˣ', 'y' to 'ʸ', 'z' to 'ᶻ'
+    'n' to 'ⁿ', 'i' to 'ⁱ', 'x' to 'ˣ', 'y' to 'ʸ', 'a' to 'ᵃ', 'b' to 'ᵇ'
 )
 
-/**
- * Convert a TeX expression to readable Unicode text.
- *
- * Handles: \sum, \prod, \lfloor/\rfloor, \lceil/\rceil, Greek letters,
- * subscripts `x_1`, superscripts `x^2`, fractions `\frac{a}{b}`,
- * `\sqrt{}`, `\text{}`, operators, and white space commands.
- */
 internal fun latexToUnicode(tex: String): String {
     if (tex.isBlank()) return tex
     var s = tex
@@ -875,174 +1133,113 @@ internal fun latexToUnicode(tex: String): String {
         .replace("\\ ", " ").replace("\\:", " ")
     s = s.replace("\\%", "%").replace("\\$", "$").replace("\\&", "&")
         .replace("\\_", "_").replace("\\#", "#")
-        .replace("\\{", "{").replace("\\}", "}")
 
-    // \text{...}
+    val matrixRegex = Regex("\\\\begin\\{([a-zA-Z]*matrix)\\}(.*?)\\\\end\\{\\1\\}", RegexOption.DOT_MATCHES_ALL)
+    s = matrixRegex.replace(s) { m ->
+        val env = m.groupValues[1]
+        val body = m.groupValues[2]
+        formatLatexMatrix(env, body)
+    }
+
     s = Regex("\\\\text\\{([^}]*)\\}").replace(s) { m -> m.groupValues[1] }
-    // \mathrm{...} / \mathit{...} / \mathbf{...}
     s = Regex("\\\\mathrm\\{([^}]*)\\}").replace(s) { m -> m.groupValues[1] }
     s = Regex("\\\\mathit\\{([^}]*)\\}").replace(s) { m -> m.groupValues[1] }
     s = Regex("\\\\mathbf\\{([^}]*)\\}").replace(s) { m -> m.groupValues[1] }
 
-    // \mathbb{R} etc.
     s = Regex("\\\\mathbb\\{([^}]*)\\}").replace(s) { m ->
         m.groupValues[1].map { BLACKBOARD_BOLD[it] ?: it }.joinToString("")
     }
-    // \mathcal{...} / \mathscr{...}
-    s = Regex("\\\\mathcal\\{([^}]*)\\}").replace(s) { m ->
+    s = Regex("\\\\mathit\\{([^}]*)\\}").replace(s) { m ->
         m.groupValues[1].map { SCRIPT_LETTERS[it] ?: it }.joinToString("")
     }
     s = Regex("\\\\mathscr\\{([^}]*)\\}").replace(s) { m ->
         m.groupValues[1].map { SCRIPT_LETTERS[it] ?: it }.joinToString("")
     }
 
-    // \frac{a}{b} -> a/b
     s = Regex("\\\\frac\\{([^}]*)\\}\\{([^}]*)\\}").replace(s) { m ->
-        val num = latexToUnicode(m.groupValues[1])
-        val den = latexToUnicode(m.groupValues[2])
-        "$num/$den"
+        "${m.groupValues[1]}/${m.groupValues[2]}"
     }
-    // \sqrt[3]{x} and \sqrt{x}
-    s = Regex("\\\\sqrt\\[(\\d+)\\]\\{([^}]*)\\}").replace(s) { m ->
-        "√[${m.groupValues[1]}](${latexToUnicode(m.groupValues[2])})"
-    }
+
     s = Regex("\\\\sqrt\\{([^}]*)\\}").replace(s) { m ->
-        "√(${latexToUnicode(m.groupValues[1])})"
+        "√(${m.groupValues[1]})"
     }
 
-    // \sum_{i=1}^{n} style limits -> ∑ with sub/superscript
-    s = Regex("\\\\(sum|prod|int|oint|iint|iiint|bigcup|bigcap)\\s*_(\\{[^}]*\\}|\\S)\\s*\\^(\\{[^}]*\\}|\\S)").replace(s) { m ->
-        val op = TEX_SYMBOLS[m.groupValues[1]] ?: m.groupValues[1]
-        val lower = m.groupValues[2].removeSurrounding("{", "}")
-        val upper = m.groupValues[3].removeSurrounding("{", "}")
-        "$op${toSubscript(lower)}${toSuperscript(upper)}"
+    SYMBOL_MAP.forEach { (cmd, unicode) ->
+        s = s.replace("\\$cmd ", "$unicode ").replace("\\$cmd", unicode)
+    }
+    GREEK_MAP.forEach { (cmd, unicode) ->
+        s = s.replace("\\$cmd ", "$unicode ").replace("\\$cmd", unicode)
     }
 
-    // Named operators: \log_2 n, \lim_{x\to0}
-    s = Regex("\\\\(log|ln|lim|max|min|sup|inf|arg|det|dim|gcd|exp|sin|cos|tan|sec|csc|cot|sinh|cosh|tanh|arcsin|arccos|arctan|Pr)\\s*").replace(s) { m ->
-        m.groupValues[1]
+    s = Regex("\\^\\{([^}]*)\\}").replace(s) { m ->
+        m.groupValues[1].map { SUPER_MAP[it] ?: it }.joinToString("")
+    }
+    s = Regex("\\^([0-9a-z+-=])").replace(s) { m ->
+        val c = m.groupValues[1].first()
+        (SUPER_MAP[c] ?: c).toString()
     }
 
-    // \bmod, \pmod, \mod
-    s = s.replace("\\bmod", "mod").replace("\\mod", " mod ")
-    s = Regex("\\\\pmod\\{([^}]*)\\}").replace(s) { " (mod ${it.groupValues[1]})" }
-
-    // Generic subscripts: x_1, x_{i+1}
-    s = Regex("_\\{([^}]*)\\}").replace(s) { m -> toSubscript(m.groupValues[1]) }
-    s = Regex("_([0-9a-zA-Zα-ωΑ-Ω])").replace(s) { m -> toSubscript(m.groupValues[1]) }
-
-    // Generic superscripts: x^2, x^{n+1}
-    s = Regex("\\^\\{([^}]*)\\}").replace(s) { m -> toSuperscript(m.groupValues[1]) }
-    s = Regex("\\^([0-9a-zA-Zα-ωΑ-Ω])").replace(s) { m -> toSuperscript(m.groupValues[1]) }
-
-    // \lbrace/\rbrace -> real braces (protected from grouping-brace cleanup)
-    s = s.replace("\\lbrace", "\u0001").replace("\\rbrace", "\u0002")
-
-    // Remaining TeX commands: \theta -> θ, \sum -> ∑
-    s = Regex("\\\\([A-Za-z]+)").replace(s) { m ->
-        val name = m.groupValues[1]
-        GREEK_LETTERS[name] ?: TEX_SYMBOLS[name] ?: name
+    s = Regex("_\\{([^}]*)\\}").replace(s) { m ->
+        m.groupValues[1].map { SUB_MAP[it] ?: it }.joinToString("")
+    }
+    s = Regex("_([0-9a-z+-=])").replace(s) { m ->
+        val c = m.groupValues[1].first()
+        (SUB_MAP[c] ?: c).toString()
     }
 
-    // Braces that were only grouping
-    s = s.replace("{", "").replace("}", "")
-    s = s.replace("\u0001", "{").replace("\u0002", "}")
-
-    // \atop, \over
-    s = Regex("\\s*\\\\over\\s*").replace(s, "/")
-    s = Regex("\\s*\\\\atop\\s*").replace(s, "/")
-
-    return s
+    return s.replace(Regex("\\{([^}]*)\\}")) { m -> m.groupValues[1] }
 }
 
-private fun toSubscript(inner: String): String =
-    inner.map { SUBSCRIPTS[it] ?: it }.joinToString("")
+private fun formatLatexMatrix(env: String, innerContent: String): String {
+    val rows = innerContent.split("\\\\").map { row ->
+        row.split("&").map { it.trim() }
+    }.filter { row -> row.any { it.isNotEmpty() } }
 
-private fun toSuperscript(inner: String): String =
-    inner.map { SUPERSCRIPTS[it] ?: it }.joinToString("")
+    if (rows.isEmpty()) return ""
 
-/** Inline math conversion — delegates to the full TeX→Unicode engine. */
-internal fun formatLatexMath(rawTex: String): String =
-    latexToUnicode(rawTex)
+    val colCount = rows.maxOf { it.size }
+    val colWidths = (0 until colCount).map { colIdx ->
+        rows.maxOf { row -> row.getOrNull(colIdx)?.length ?: 0 }.coerceAtLeast(1)
+    }
 
-private fun inlineMarkdown(text: String, raw: String): AnnotatedString {
-    return buildAnnotatedString {
-        var last = 0
-        for (m in INLINE_PATTERN.findAll(text)) {
-            if (m.range.first > last) {
-                append(text.substring(last, m.range.first))
-            }
-            val value = m.groupValues[1]
-            when {
-                value.isNotEmpty() && m.value.startsWith("[[") -> {
-                    pushStringAnnotation(tag = "WIKILINK", annotation = value)
-                    withStyle(SpanStyle(color = Color(0xFF2DD4BF), textDecoration = TextDecoration.Underline, fontWeight = FontWeight.Medium)) {
-                        append(value)
-                    }
-                    pop()
-                }
-                m.groupValues[1].isEmpty() && m.groupValues[2].isNotEmpty() && m.value.startsWith("$$") -> {
-                    val mathText = formatLatexMath(m.groupValues[2])
-                    withStyle(SpanStyle(fontFamily = FontFamily.Monospace, color = Color(0xFFC084FC), fontWeight = FontWeight.SemiBold)) {
-                        append("$$ $mathText $$")
-                    }
-                }
-                m.groupValues[3].isNotEmpty() && m.value.startsWith("$") && !m.value.startsWith("$$") -> {
-                    val mathText = formatLatexMath(m.groupValues[3])
-                    withStyle(SpanStyle(fontFamily = FontFamily.Monospace, color = Color(0xFFC084FC))) {
-                        append(mathText)
-                    }
-                }
-                m.groupValues[4].isNotEmpty() -> {
-                    withStyle(SpanStyle(fontFamily = FontFamily.Monospace, color = StitchCodeHighlight, background = StitchCodeBg)) {
-                        append(m.groupValues[4])
-                    }
-                }
-                m.groupValues[5].isNotEmpty() -> {
-                    val label = m.groupValues[5]
-                    val url = m.groupValues[6]
-                    pushStringAnnotation(tag = "WIKILINK", annotation = url)
-                    withStyle(SpanStyle(color = Color(0xFF3B82F6), textDecoration = TextDecoration.Underline)) {
-                        append(label)
-                    }
-                    pop()
-                }
-                m.groupValues[7].isNotEmpty() -> {
-                    withStyle(SpanStyle(fontWeight = FontWeight.Bold)) {
-                        append(inlineMarkdown(m.groupValues[8], raw))
-                    }
-                }
-                m.groupValues[9].isNotEmpty() -> {
-                    withStyle(SpanStyle(fontStyle = FontStyle.Italic)) {
-                        append(inlineMarkdown(m.groupValues[10], raw))
-                    }
-                }
-                m.groupValues[11].isNotEmpty() -> {
-                    withStyle(SpanStyle(textDecoration = TextDecoration.LineThrough)) {
-                        append(m.groupValues[12])
-                    }
-                }
-            }
-            last = m.range.last + 1
-        }
-        if (last < text.length) {
-            append(text.substring(last))
+    val formattedRows = rows.map { row ->
+        colWidths.indices.joinToString("  ") { colIdx ->
+            val cell = row.getOrNull(colIdx) ?: ""
+            cell.padStart(colWidths[colIdx])
         }
     }
-}
 
-private fun inlinePlain(text: String): String {
-    return INLINE_PATTERN.replace(text) { m ->
-        when {
-            m.value.startsWith("[[") -> m.groupValues[1]
-            m.value.startsWith("$$") -> formatLatexMath(m.groupValues[2])
-            m.value.startsWith("$") -> formatLatexMath(m.groupValues[3])
-            m.value.startsWith("`") -> m.groupValues[4]
-            m.value.startsWith("[") -> m.groupValues[5]
-            m.groupValues[7].isNotEmpty() -> m.groupValues[8]
-            m.groupValues[9].isNotEmpty() -> m.groupValues[10]
-            m.groupValues[11].isNotEmpty() -> m.groupValues[12]
-            else -> m.value
+    return when (env) {
+        "pmatrix" -> {
+            if (formattedRows.size == 1) "( ${formattedRows[0]} )"
+            else formattedRows.mapIndexed { idx, r ->
+                val left = if (idx == 0) "⎛ " else if (idx == formattedRows.size - 1) "⎝ " else "⎜ "
+                val right = if (idx == 0) " ⎞" else if (idx == formattedRows.size - 1) " ⎠" else " ⎟"
+                "$left$r$right"
+            }.joinToString("\n")
         }
+        "bmatrix" -> {
+            if (formattedRows.size == 1) "[ ${formattedRows[0]} ]"
+            else formattedRows.mapIndexed { idx, r ->
+                val left = if (idx == 0) "⎡ " else if (idx == formattedRows.size - 1) "⎣ " else "⎢ "
+                val right = if (idx == 0) " ⎤" else if (idx == formattedRows.size - 1) " ⎦" else " ⎥"
+                "$left$r$right"
+            }.joinToString("\n")
+        }
+        "Bmatrix" -> {
+            if (formattedRows.size == 1) "{ ${formattedRows[0]} }"
+            else formattedRows.mapIndexed { idx, r ->
+                val left = if (idx == 0) "⎧ " else if (idx == formattedRows.size - 1) "⎩ " else "⎨ "
+                val right = if (idx == 0) " ⎰" else if (idx == formattedRows.size - 1) " ⎱" else " ⎬"
+                "$left$r$right"
+            }.joinToString("\n")
+        }
+        "vmatrix" -> {
+            formattedRows.joinToString("\n") { r -> "│ $r │" }
+        }
+        "Vmatrix" -> {
+            formattedRows.joinToString("\n") { r -> "║ $r ║" }
+        }
+        else -> formattedRows.joinToString("\n")
     }
 }

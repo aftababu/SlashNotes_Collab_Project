@@ -385,7 +385,24 @@ pub fn rename_item(root_path: String, old_relative_path: String, new_name: Strin
     };
 
     let new_path = parent.join(new_filename);
-    let result = fs::rename(old_path, new_path).is_ok();
+    if old_path == new_path {
+        return true;
+    }
+
+    let result = if fs::rename(&old_path, &new_path).is_ok() {
+        true
+    } else {
+        if old_path.is_file() {
+            if fs::copy(&old_path, &new_path).is_ok() {
+                let _ = fs::remove_file(&old_path);
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    };
     vault::invalidate_on_mutation(&root_path, result)
 }
 

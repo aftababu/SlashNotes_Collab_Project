@@ -33,6 +33,26 @@ object AppSettings {
         getPrefs(context).edit().putString(KEY_RECENTLY_VISITED_NOTES, trimmed.joinToString("|")).apply()
     }
 
+    fun updateNoteVisitedPath(context: Context, oldPath: String, newPath: String) {
+        if (oldPath.isBlank() || newPath.isBlank()) return
+        val current = getRecentlyVisitedNotes(context).toMutableList()
+        val index = current.indexOf(oldPath)
+        if (index != -1) {
+            current[index] = newPath
+        } else {
+            current.add(0, newPath)
+        }
+        val trimmed = current.distinct().take(10)
+        getPrefs(context).edit().putString(KEY_RECENTLY_VISITED_NOTES, trimmed.joinToString("|")).apply()
+    }
+
+    fun removeNoteVisitedPath(context: Context, path: String) {
+        if (path.isBlank()) return
+        val current = getRecentlyVisitedNotes(context).toMutableList()
+        current.remove(path)
+        getPrefs(context).edit().putString(KEY_RECENTLY_VISITED_NOTES, current.joinToString("|")).apply()
+    }
+
     fun getShowAllFiles(context: Context): Boolean {
         return getPrefs(context).getBoolean(KEY_SHOW_ALL_FILES, false)
     }

@@ -13,9 +13,24 @@ android {
         targetSdk = 34
         versionCode = 1
         versionName = "1.0"
+splits {
+        abi {
+            isEnable = true
+            reset()
+
+            include(
+                "arm64-v8a",
+                "armeabi-v7a",
+                "x86",
+                "x86_64"
+            )
+
+            isUniversalApk = true
+        }
+    }
         ndk {
-            abiFilters.clear()
-            abiFilters.add("arm64-v8a")
+            //abiFilters.clear()
+            //abiFilters.add("arm64-v8a")
         }
     }
 
@@ -58,7 +73,8 @@ android {
     implementation("androidx.core:core-ktx:1.12.0")
     implementation("androidx.core:core-splashscreen:1.0.1")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
-implementation("androidx.compose.material:material-icons-extended")
+    implementation("org.jetbrains:markdown:0.5.0")
+    implementation("androidx.compose.material:material-icons-extended")
     // Jetpack Compose & Material 3
     implementation("androidx.activity:activity-compose:1.8.2")
     implementation(platform("androidx.compose:compose-bom:2024.02.00"))

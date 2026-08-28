@@ -83,7 +83,7 @@ fun FolderTreeView(
         }
     }
 
-    LaunchedEffect(notesDir, currentRelativeDir, showAllFiles) {
+    LaunchedEffect(notesDir, currentRelativeDir, showAllFiles, isRefreshing) {
         refreshFolderTree()
     }
 

@@ -836,12 +836,82 @@ pub fn perform_sync(repo_path: &str, token: &str, remote_url: &str, branch: &str
                 .index()
                 .map_err(|e| format!("Failed to open index: {}", e.message()))?;
 
-            // Resolve any remaining conflicts by favouring ours
+            // Conflicted Copy Resolution: Extract remote 'theirs' blobs and save as conflicted copy files
             if index.has_conflicts() {
+                let timestamp_str = format_utc_datetime(
+                    std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_secs())
+                        .unwrap_or(0),
+                );
+
+                let conflicts: Vec<_> = index
+                    .conflicts()
+                    .map_err(|e| format!("Failed to read index conflicts: {}", e.message()))?
+                    .filter_map(|c| c.ok())
+                    .collect();
+
+                let workdir = repo
+                    .workdir()
+                    .ok_or_else(|| "Repository workdir not found".to_string())?
+                    .to_path_buf();
+
+                for conflict in conflicts {
+                    if let Some(ref their_entry) = conflict.their {
+                        if let Ok(rel_path_str) = std::str::from_utf8(&their_entry.path) {
+                            let rel_path = Path::new(rel_path_str);
+                            if let Ok(blob) = repo.find_blob(their_entry.id) {
+                                let remote_bytes = blob.content();
+
+                                let stem = rel_path
+                                    .file_stem()
+                                    .and_then(|s| s.to_str())
+                                    .unwrap_or("Conflict");
+                                let ext = rel_path
+                                    .extension()
+                                    .and_then(|e| e.to_str())
+                                    .unwrap_or("md");
+                                let parent = rel_path.parent().unwrap_or_else(|| Path::new(""));
+
+                                let conflict_filename = format!(
+                                    "{} (Conflicted Copy {}).{}",
+                                    stem, timestamp_str, ext
+                                );
+                                let conflict_rel_path = if parent.as_os_str().is_empty() {
+                                    Path::new(&conflict_filename).to_path_buf()
+                                } else {
+                                    parent.join(&conflict_filename)
+                                };
+
+                                let full_conflict_path = workdir.join(&conflict_rel_path);
+                                if let Some(parent_dir) = full_conflict_path.parent() {
+                                    let _ = std::fs::create_dir_all(parent_dir);
+                                }
+                                let _ = std::fs::write(&full_conflict_path, remote_bytes);
+
+                                let _ = index.add_path(&conflict_rel_path);
+                            }
+                        }
+                    }
+
+                    if let Some(ref our_entry) = conflict.our {
+                        if let Ok(rel_path_str) = std::str::from_utf8(&our_entry.path) {
+                            let rel_path = Path::new(rel_path_str);
+                            let _ = index.remove_path(rel_path);
+                            let _ = index.add_path(rel_path);
+                        }
+                    } else if let Some(ref their_entry) = conflict.their {
+                        if let Ok(rel_path_str) = std::str::from_utf8(&their_entry.path) {
+                            let rel_path = Path::new(rel_path_str);
+                            let _ = index.remove_path(rel_path);
+                            let _ = index.add_path(rel_path);
+                        }
+                    }
+                }
+
                 index
-                    .add_all(["*"].iter(), git2::IndexAddOption::DEFAULT, None)
-                    .ok();
-                index.write().ok();
+                    .write()
+                    .map_err(|e| format!("Failed to write index: {}", e.message()))?;
             }
 
             let tree_id = index
@@ -1106,6 +1176,38 @@ pub fn push_dual_branch(path: &Path, force: bool) -> GitResult {
             message: None,
             error: Some(format!("Failed to push: {}", e)),
         },
+    }
+}
+
+fn format_utc_datetime(epoch_secs: u64) -> String {
+    let days = epoch_secs / 86400;
+    let rem_secs = epoch_secs % 86400;
+    let hours = rem_secs / 3600;
+    let minutes = (rem_secs % 3600) / 60;
+
+    let z = days + 719468;
+    let era = z / 146097;
+    let doe = z - era * 146097;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+
+    format!("{:04}-{:02}-{:02}-{:02}{:02}", y, m, d, hours, minutes)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_format_utc_datetime() {
+        let formatted = format_utc_datetime(1787859147);
+        assert!(!formatted.is_empty());
+        assert_eq!(formatted.len(), 15); // YYYY-MM-DD-HHmm (e.g. 2026-08-27-1932)
     }
 }
 

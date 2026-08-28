@@ -136,7 +136,7 @@ importers:
         specifier: ^4.1.18
         version: 4.3.3(vite@7.3.6(jiti@2.7.0)(lightningcss@1.32.0))
       '@tauri-apps/cli':
-        specifier: ^2
+        specifier: ^2.11.4
         version: 2.11.4
       '@types/react':
         specifier: ^19.1.8

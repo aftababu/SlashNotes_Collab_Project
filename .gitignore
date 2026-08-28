@@ -39,3 +39,4 @@ Thumbs.db
 .idea/
 *.iml
 .vscode/
+release/

@@ -41,7 +41,7 @@ object SecureStorage {
 
     fun getRemoteUrl(context: Context): String {
         val saved = getPrefs(context).getString(KEY_REMOTE_URL, "") ?: ""
-        return saved.ifEmpty { "https://github.com/aftababu/My_Notes.git" }
+        return saved
     }
 
     fun saveRemoteUrl(context: Context, url: String) {

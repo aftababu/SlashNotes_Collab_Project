@@ -7,6 +7,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.FilterCenterFocus
 import androidx.compose.material3.*
@@ -24,6 +25,7 @@ data class CommandPaletteAction(
     val description: String,
     val icon: ImageVector,
     val category: String,
+    val isEnabled: Boolean = true,
     val onExecute: () -> Unit
 )
 
@@ -35,11 +37,35 @@ fun CommandPaletteSheet(
     onExportPdf: () -> Unit,
     onShareNote: () -> Unit,
     onTriggerGitSync: () -> Unit,
-    onOpenSettings: () -> Unit
+    onOpenSettings: () -> Unit,
+    isNoteOpen: Boolean = false,
+    canUndo: Boolean = false,
+    canRedo: Boolean = false,
+    onUndo: (() -> Unit)? = null,
+    onRedo: (() -> Unit)? = null
 ) {
     var query by remember { mutableStateOf("") }
-    val baseActions = remember(onToggleFocusMode, onExportPdf, onShareNote, onTriggerGitSync, onOpenSettings) {
+    val baseActions = remember(
+        onToggleFocusMode, onExportPdf, onShareNote, onTriggerGitSync, onOpenSettings,
+        isNoteOpen, canUndo, canRedo, onUndo, onRedo
+    ) {
         listOf(
+            CommandPaletteAction(
+                title = "Undo",
+                description = if (isNoteOpen) "Undo last edit in active note" else "Undo unavailable (open a note first)",
+                icon = Icons.AutoMirrored.Filled.Undo,
+                category = "EDITING",
+                isEnabled = isNoteOpen && canUndo && onUndo != null,
+                onExecute = { onUndo?.invoke() }
+            ),
+            CommandPaletteAction(
+                title = "Redo",
+                description = if (isNoteOpen) "Redo last undone edit in active note" else "Redo unavailable (open a note first)",
+                icon = Icons.AutoMirrored.Filled.Redo,
+                category = "EDITING",
+                isEnabled = isNoteOpen && canRedo && onRedo != null,
+                onExecute = { onRedo?.invoke() }
+            ),
             CommandPaletteAction(
                 title = "Toggle Focus Mode",
                 description = "Hide headers and toolbars for distraction-free writing",
@@ -66,6 +92,7 @@ fun CommandPaletteSheet(
                 description = "Save current note as PDF document to Downloads folder",
                 icon = Icons.Default.PictureAsPdf,
                 category = "ACTIONS",
+                isEnabled = isNoteOpen,
                 onExecute = onExportPdf
             ),
             CommandPaletteAction(
@@ -73,6 +100,7 @@ fun CommandPaletteSheet(
                 description = "Share note text via Android system share sheet",
                 icon = Icons.Default.Share,
                 category = "ACTIONS",
+                isEnabled = isNoteOpen,
                 onExecute = onShareNote
             )
         )
@@ -179,11 +207,18 @@ private fun StitchCommandActionCard(
     action: CommandPaletteAction,
     onClick: () -> Unit
 ) {
+    val alpha = if (action.isEnabled) 1f else 0.45f
+
     Surface(
-        onClick = onClick,
+        onClick = {
+            if (action.isEnabled) {
+                onClick()
+            }
+        },
+        enabled = action.isEnabled,
         shape = RoundedCornerShape(8.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = alpha),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = alpha))
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -194,7 +229,7 @@ private fun StitchCommandActionCard(
                 modifier = Modifier
                     .width(4.dp)
                     .height(56.dp)
-                    .background(StitchAccentCoral)
+                    .background(if (action.isEnabled) StitchAccentCoral else MaterialTheme.colorScheme.outlineVariant)
             )
 
             Row(
@@ -206,20 +241,35 @@ private fun StitchCommandActionCard(
                 // Icon container box
                 Surface(
                     shape = RoundedCornerShape(6.dp),
-                    color = MaterialTheme.colorScheme.surface,
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = alpha),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = alpha)),
                     modifier = Modifier.size(36.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        Icon(action.icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                        Icon(
+                            action.icon,
+                            contentDescription = null,
+                            tint = if (action.isEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                            modifier = Modifier.size(18.dp)
+                        )
                     }
                 }
 
                 Spacer(modifier = Modifier.width(12.dp))
 
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(action.title, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
-                    Text(action.description, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                    Text(
+                        action.title,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (action.isEnabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                    )
+                    Text(
+                        action.description,
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (action.isEnabled) 1f else 0.5f),
+                        maxLines = 1
+                    )
                 }
             }
         }

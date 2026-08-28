@@ -38,7 +38,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["deb","rpm"],
+    "targets": ["deb", "rpm", "appimage"],
     "createUpdaterArtifacts": true,
     "fileAssociations": [
       {

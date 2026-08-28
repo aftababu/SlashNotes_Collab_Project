@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- SplashScreen Theme for Android 12+ Light Mode -->
+    <!-- SplashScreen Theme for Android 12+ Dark Mode -->
     <style name="Theme.SlashNote.Starting" parent="Theme.SplashScreen">
-        <item name="windowSplashScreenBackground">#F8F9FA</item>
+        <item name="windowSplashScreenBackground">#181920</item>
         <item name="windowSplashScreenAnimatedIcon">@drawable/slashnote_logo</item>
-        <item name="windowSplashScreenIconBackgroundColor">#F8F9FA</item>
+        <item name="windowSplashScreenIconBackgroundColor">#181920</item>
         <item name="postSplashScreenTheme">@style/Theme.SlashNote</item>
     </style>
 </resources>

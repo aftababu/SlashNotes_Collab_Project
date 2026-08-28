@@ -311,7 +311,7 @@ impl SearchIndex {
                             .map(|d| d.as_secs() as i64)
                             .unwrap_or(0);
 
-                        let title = extract_title(&content);
+                        let title = extract_title_from_id(&id);
 
                         writer.add_document(doc!(
                             self.id_field => id.as_str(),
@@ -1021,9 +1021,11 @@ async fn read_note(id: String, state: State<'_, AppState>) -> Result<Note, Strin
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0);
 
+    let display_title = extract_title_from_id(&id);
+
     Ok(Note {
         id,
-        title: extract_title(&content),
+        title: display_title,
         content,
         path: file_path.to_string_lossy().into_owned(),
         modified,
@@ -1045,45 +1047,12 @@ async fn save_note(
     };
     let folder_path = PathBuf::from(&folder);
 
-    let title = extract_title(&content);
-    let sanitized_leaf = sanitize_filename(&title);
-
-    // Determine the file ID and path, handling renames
-    let (final_id, file_path, old_id) = if let Some(existing_id) = id {
-        // Preserve directory prefix for notes in subfolders
-        let (dir_prefix, desired_id) = if let Some(pos) = existing_id.rfind('/') {
-            let prefix = &existing_id[..pos];
-            (Some(prefix.to_string()), format!("{}/{}", prefix, sanitized_leaf))
-        } else {
-            (None, sanitized_leaf.clone())
-        };
-
-        let old_file_path = abs_path_from_id(&folder_path, &existing_id)?;
-
-        if existing_id != desired_id {
-            let mut new_id = desired_id.clone();
-            let mut counter = 1;
-
-            while new_id != existing_id
-                && abs_path_from_id(&folder_path, &new_id)
-                    .map(|p| p.exists())
-                    .unwrap_or(false)
-            {
-                new_id = if let Some(ref prefix) = dir_prefix {
-                    format!("{}/{}-{}", prefix, sanitized_leaf, counter)
-                } else {
-                    format!("{}-{}", sanitized_leaf, counter)
-                };
-                counter += 1;
-            }
-
-            let new_file_path = abs_path_from_id(&folder_path, &new_id)?;
-            (new_id, new_file_path, Some((existing_id, old_file_path)))
-        } else {
-            (existing_id, old_file_path, None)
-        }
+    let (final_id, file_path) = if let Some(existing_id) = id {
+        let file_path = abs_path_from_id(&folder_path, &existing_id)?;
+        (existing_id, file_path)
     } else {
-        // New notes go in root
+        let raw_title = extract_title(&content);
+        let sanitized_leaf = sanitize_filename(&raw_title);
         let mut new_id = sanitized_leaf.clone();
         let mut counter = 1;
 
@@ -1096,20 +1065,12 @@ async fn save_note(
         }
 
         let new_file_path = abs_path_from_id(&folder_path, &new_id)?;
-        (new_id, new_file_path, None)
+        (new_id, new_file_path)
     };
 
-    // Write the file to the new path
     fs::write(&file_path, &content)
         .await
         .map_err(|e| e.to_string())?;
-
-    // Delete old file AFTER successful write (to prevent data loss)
-    if let Some((_, ref old_file_path)) = old_id {
-        if old_file_path.exists() && *old_file_path != file_path {
-            let _ = fs::remove_file(old_file_path).await;
-        }
-    }
 
     let metadata = fs::metadata(&file_path)
         .await
@@ -1121,26 +1082,18 @@ async fn save_note(
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0);
 
-    // Update search index (delete old entry if renamed, then add new)
+    let display_title = extract_title_from_id(&final_id);
+
     {
         let index = state.search_index.lock().expect("search index mutex");
         if let Some(ref search_index) = *index {
-            if let Some((ref old_id_str, _)) = old_id {
-                let _ = search_index.delete_note(old_id_str);
-            }
-            let _ = search_index.index_note(&final_id, &title, &content, modified);
+            let _ = search_index.index_note(&final_id, &display_title, &content, modified);
         }
-    }
-
-    // Update cache (remove old entry if renamed)
-    if let Some((ref old_id_str, _)) = old_id {
-        let mut cache = state.notes_cache.write().expect("cache write lock");
-        cache.remove(old_id_str);
     }
 
     Ok(Note {
         id: final_id,
-        title,
+        title: display_title,
         content,
         path: file_path.to_string_lossy().into_owned(),
         modified,
@@ -2276,7 +2229,7 @@ fn setup_file_watcher(
                                 "created" | "modified" => {
                                     match std::fs::read_to_string(path) {
                                         Ok(content) => {
-                                            let title = extract_title(&content);
+                                            let title = extract_title_from_id(&note_id);
                                             let modified = std::fs::metadata(path)
                                                 .ok()
                                                 .and_then(|m| m.modified().ok())
