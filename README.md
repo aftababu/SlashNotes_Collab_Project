@@ -1,111 +1,68 @@
 # SlashNote
 
-<img src="public/SlashNote.png" alt="SlashNote" width="128" height="128" style="border-radius: 22px; margin-bottom: 8px;">
+<p align="center">
+  <img src="public/SlashNote.png" alt="SlashNote" width="128" height="128" style="border-radius: 22px; margin-bottom: 8px;">
+</p>
 
-A minimalist, offline-first markdown note-taking app for macOS, Windows, and Linux.
+<p align="center">
+  <strong>Lightning-fast, offline-first Markdown note-taking for Desktop & Android.</strong>
+</p>
 
-![macOS](https://img.shields.io/badge/platform-macOS-lightgrey) ![Windows](https://img.shields.io/badge/platform-Windows-blue) ![Linux](https://img.shields.io/badge/platform-Linux-orange)
+<p align="center">
+  <img src="https://img.shields.io/badge/platform-Android-brightgreen" alt="Android">
+  <img src="https://img.shields.io/badge/platform-Linux-orange" alt="Linux">
+  <img src="https://img.shields.io/badge/platform-macOS-lightgrey" alt="macOS">
+  <img src="https://img.shields.io/badge/platform-Windows-blue" alt="Windows">
+  <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT">
+  <img src="https://img.shields.io/badge/core-Rust%20(libgit2)-DEA584" alt="Rust Core">
+</p>
 
-## Features
+> 💡 **Engineering Note:** The Desktop interface is adapted & edited from the open-source project _scratch_, while the mobile client is completely custom-built from the ground up by the developer.
 
-- **Offline-first** - No cloud, no account, no internet required
-- **Markdown-based** - Notes stored as plain `.md` files you own
-- **WYSIWYG editing** - Rich text editing that saves as markdown
-- **Preview mode** - Open any `.md` file via drag-and-drop or "Open With" without a notes folder
-- **Markdown source mode** - Toggle to view and edit raw markdown (`Cmd+Shift+M`)
-- **Syntax highlighting** - 20 languages with GitHub-inspired color scheme
-- **Mermaid diagrams** - Render flowcharts, sequence diagrams, and more in fenced code blocks
-- **KaTeX math** - Render block `$$...$$` math equations
-- **Wikilinks** - Type `[[` to link between notes with autocomplete
-- **Slash commands** - Type `/` to quickly insert headings, lists, code blocks, diagrams, and more
-- **Focus mode** - Distraction-free writing with animated sidebar/toolbar fade (`Cmd+Shift+Enter`)
-- **Edit with Claude Code, OpenAI Codex, OpenCode, or Ollama** - Use your local CLI to edit notes with AI (including fully offline via Ollama)
-- **Works with other AI agents** - Detects external file changes
-- **Folders** - Opt-in collapsible folder tree with drag-and-drop to organize notes
-- **Keyboard optimized** - Lots of shortcuts and a command palette
-- **Customizable** - Theme, typography, page width, and RTL text direction
-- **Git integration** - Optional version control with push/pull for multi-device sync
-- **Lightweight** - 5-10x smaller than Obsidian or Notion
+---
 
-## Screenshot
+## ⚡ Overview
 
-![Screenshot](docs/screenshot.png)
+SlashNote is a distraction-free, local-first Markdown workspace engineered for developers, researchers, and technical writers. Your notes remain 100% your own—stored as plain `.md` files on your local filesystem and synchronized securely across devices via native Git integration.
 
-## Installation
+---
 
-### macOS
+## ✨ Features
 
-1. Download the latest `.dmg` from Releases
-2. Open the DMG and drag SlashNote to Applications
-3. Open SlashNote from Applications
+### 🛠️ Editor & Pro Developer Suite
 
-### Windows
+- **100% Offline-First:** No accounts, no central servers, no telemetry, and zero vendor lock-in.
+- **WYSIWYG & Raw Source Mode:** Seamless inline formatting with an instant toggle (`Cmd+Shift+M` / `Ctrl+Shift+M`) to edit raw Markdown.
+- **KaTeX Math Engine:** Full support for inline `$math$` and display block `$$...$$` equations.
+- **Mermaid Diagrams & Code Highlighting:** Render live diagrams and syntax-highlighted code blocks across 20+ programming languages.
+- **Interactive Tables & Task Lists:** GitHub Flavored Markdown (GFM) task lists and interactive data tables.
+- **Wikilinks & Autocomplete:** Interlink your notes with `[[wikilinks]]` and fast popup indexing.
+- **Slash Commands & Focus Mode:** Instant `/` menu for inserting structural elements; Focus Mode (`Cmd+Shift+Enter`) for distraction-free writing.
+- **External AI & CLI Ready:** Works seamlessly with Claude Code, OpenAI Codex, OpenCode, and local Ollama instances via native filesystem watchers.
 
-Download the latest `.exe` installer from Releases and run it. WebView2 will be downloaded automatically if needed.
+### 🔄 Dual-Branch Native Git Sync
 
-### Linux
+- **Embedded `libgit2` Core:** Powered by a shared Rust engine compiled directly into the binary—no system Git installation required.
+- **Safe Dual-Branch Workflow:** Uses automated 3-way merging across branches (`main` + `vault-backup`).
+- **Conflict Isolation:** Non-destructive sync that automatically writes `<stem> (Conflicted Copy <timestamp>).md` to guarantee zero data loss.
 
-Download the latest `.AppImage` or `.deb` from Releases.
+---
 
-### From Source
+## 🏗️ Architecture & Tech Stack
 
-**Prerequisites:** Node.js 18+, Rust 1.70+
-
-**macOS:** Xcode Command Line Tools · **Windows:** WebView2 Runtime (pre-installed on Windows 11)
-
-```bash
-git clone <your-repo-url>
-cd slashnote
-npm install
-npm run tauri dev      # Development
-npm run tauri build    # Production build
+```text
+┌─────────────────────────────────────────────────────────────┐
+│                       SlashNote Core                        │
+│                 (Rust / crates/SlashNotes_Core)              │
+│       • pulldown-cmark  • libgit2  • Tantivy Indexing       │
+└──────────────────────────────┬──────────────────────────────┘
+                               │
+            ┌──────────────────┴──────────────────┐
+            ▼                                     ▼
+┌───────────────────────────┐       ┌───────────────────────────┐
+│      Desktop Client       │       │    Android Mobile Client  │
+│  • Tauri v2 + React 19    │       │  • Kotlin + Jetpack Compose│
+│  • TipTap v3 Editor       │       │  • Mozilla UniFFI Bindings│
+│  • Tailwind CSS           │       │  • Multi-Arch (ARM/x86)   │
+└───────────────────────────┘       └───────────────────────────┘
 ```
-
-## Keyboard Shortcuts
-
-SlashNote is designed to be usable without a mouse. Here are the essentials to get started:
-
-| Shortcut          | Action                 |
-| ----------------- | ---------------------- |
-| `Cmd+N`           | New note               |
-| `Cmd+D`           | Duplicate note         |
-| `Delete`          | Delete note            |
-| `Cmd+Backspace`   | Delete note            |
-| `Cmd+P`           | Command palette        |
-| `Cmd+K`           | Add/edit link          |
-| `Cmd+F`           | Find in note           |
-| `Cmd+Shift+C`     | Copy & Export menu     |
-| `Cmd+Shift+M`     | Toggle Markdown source |
-| `Cmd+Shift+Enter` | Toggle Focus mode      |
-| `Cmd+Shift+F`     | Search notes           |
-| `Cmd+R`           | Reload current note    |
-| `Cmd+,`           | Open settings          |
-| `Cmd+\`           | Toggle sidebar         |
-| `Cmd+B/I`         | Bold/Italic            |
-| `Cmd+=/-/0`       | Zoom in/out/reset      |
-| `↑/↓`             | Navigate notes         |
-
-**Note:** On Windows, use `Ctrl` instead of `Cmd` for all shortcuts.
-
-Many more shortcuts and features are available in the app—explore via the command palette (`Cmd+P` / `Ctrl+P`) or view the full reference in Settings → Shortcuts.
-
-## Built With
-
-[Tauri](https://tauri.app/) · [React](https://react.dev/) · [TipTap](https://tiptap.dev/) · [Tailwind CSS](https://tailwindcss.com/) · [Tantivy](https://github.com/quickwit-oss/tantivy)
-
-## Contributing
-
-Contributions and suggestions are welcome. SlashNote is actively maintained but the release cycle is at the whim of my schedule – sometimes I'll review and merge same-day, sometimes it may take several weeks.
-
-What makes SlashNote special is its minimal feature set and focus on user experience. We're not trying to build Obsidian or Notion, so not every feature will be a fit.
-
-**Small fixes and improvements:** go ahead and open a PR, we'll try to merge these in regularly.
-
-**Bigger changes:** if you're not sure whether a feature fits, open an issue first and ask.
-
-**Review process:** I generally won't go back and forth with review comments. Try to address any CodeRabbit comments on your PR. From there, I'll make any additional changes directly.
-
-## License
-
-MIT
-# SlashNotes_Collab_Project
