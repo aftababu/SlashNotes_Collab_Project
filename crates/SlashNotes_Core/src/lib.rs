@@ -62,7 +62,7 @@ pub struct MarkdownSpan {
 
 #[uniffi::export]
 pub fn get_core_version() -> String {
-    "0.1.0".to_string()
+    "1.0.0".to_string()
 }
 
 /// Load (or refresh) the in-memory vault index and return cached note metadata.

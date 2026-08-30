@@ -163,11 +163,22 @@ fun MarkdownEditor(
             val cursorOffset = selection.start.coerceIn(0, textLength)
             try {
                 val cursorRect = layout.getCursorRect(cursorOffset)
-                val bufferedRect = cursorRect.copy(
-                    top = (cursorRect.top - 48f).coerceAtLeast(0f),
-                    bottom = cursorRect.bottom + 48f
-                )
-                bringIntoViewRequester.bringIntoView(bufferedRect)
+                val scrollY = scrollState.value.toFloat()
+                val viewportHeight = currentVisibleHeight
+                val cursorTopInViewport = cursorRect.top - scrollY
+                val cursorBottomInViewport = cursorRect.bottom - scrollY
+
+                // Only bring into view if cursor is actually near or outside the visible viewport edges
+                val isNearBottom = cursorBottomInViewport > (viewportHeight - 64f)
+                val isNearTop = cursorTopInViewport < 32f
+
+                if (isNearBottom || isNearTop || viewportHeight <= 0f) {
+                    val bufferedRect = cursorRect.copy(
+                        top = (cursorRect.top - 48f).coerceAtLeast(0f),
+                        bottom = cursorRect.bottom + 48f
+                    )
+                    bringIntoViewRequester.bringIntoView(bufferedRect)
+                }
             } catch (_: Exception) {
                 try { bringIntoViewRequester.bringIntoView() } catch (_: Exception) {}
             }
@@ -290,7 +301,7 @@ fun MarkdownEditor(
                     .fillMaxSize()
                     .verticalScroll(scrollState)
                     .nestedScroll(flingInterceptor)
-                    .padding(horizontal = 6.dp, vertical = 4.dp)
+                    .padding(start = 6.dp, end = 6.dp, top = 4.dp, bottom = 96.dp)
             ) {
                 BasicTextField(
                     value = value,

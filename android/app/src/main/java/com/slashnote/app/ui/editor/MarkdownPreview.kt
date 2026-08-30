@@ -518,7 +518,7 @@ internal fun parseMarkdownBlocks(source: String): List<MdBlock> {
                 if (m == null) {
                     if (items.isNotEmpty() && (lines[i].startsWith("  ") || lines[i].startsWith("\t") || lines[i].isBlank())) {
                         val last = items[items.size - 1]
-                        val (iso, ieo) = getOffsets(i, i)
+                        val (_, ieo) = getOffsets(i, i)
                         items[items.size - 1] = MdBlock.ListItem(
                             last.id,
                             last.startOffset,
@@ -972,7 +972,7 @@ private fun TableCell(
 // Inline markdown parsing
 // ---------------------------------------------------------------------------
 
-internal fun inlineMarkdown(text: String, rawFull: String): AnnotatedString {
+internal fun inlineMarkdown(text: String, _rawFull: String = ""): AnnotatedString {
     return buildAnnotatedString {
         var last = 0
         INLINE_PATTERN.findAll(text).forEach { m ->

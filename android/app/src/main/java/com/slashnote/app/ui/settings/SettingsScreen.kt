@@ -375,12 +375,12 @@ private fun GeneralStitchTab(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("Live Filename Preview", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 15.sp)
+                    Text("Live Filename Preview", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface, fontSize = 15.sp)
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         "Automatically parse H1 tags to display as filename in the explorer.",
                         fontSize = 12.sp,
-                        color = StitchTextMuted
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
                 Spacer(modifier = Modifier.width(12.dp))
@@ -402,18 +402,18 @@ private fun GeneralStitchTab(
             text = "Indexing & Search",
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
-            color = Color.White
+            color = MaterialTheme.colorScheme.onSurface
         )
 
         StitchCardContainer {
             // Excluded Folders Chips
             Column(modifier = Modifier.padding(16.dp)) {
-                Text("Excluded Folders", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 15.sp)
+                Text("Excluded Folders", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface, fontSize = 15.sp)
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     "Paths to ignore during global search and indexing.",
                     fontSize = 12.sp,
-                    color = StitchTextMuted
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(modifier = Modifier.height(12.dp))
 
@@ -449,12 +449,12 @@ private fun GeneralStitchTab(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("Aggressive Auto-Save", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 15.sp)
+                    Text("Aggressive Auto-Save", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface, fontSize = 15.sp)
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         "Save changes immediately on every keystroke rather than on blur.",
                         fontSize = 12.sp,
-                        color = StitchTextMuted
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
                 Spacer(modifier = Modifier.width(12.dp))
@@ -554,7 +554,7 @@ private fun GitSyncTab(
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Text("Embedded Git Engine Settings", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White)
+        Text("Embedded Git Engine Settings", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
 
         StitchCardContainer {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -597,15 +597,15 @@ private fun GitSyncTab(
                     Text("Sync Repository Now")
                 }
 
-                HorizontalDivider(color = StitchBorder)
+                HorizontalDivider(color = MaterialTheme.colorScheme.outline)
 
                 // Connection status card
-                Text("Repository Connection", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 15.sp)
+                Text("Repository Connection", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface, fontSize = 15.sp)
                 when (connectionState) {
                     is ConnectionState.Idle -> Text(
                         "Not tested yet. Press \"Test Connection\" below to verify your remote.",
                         fontSize = 12.sp,
-                        color = StitchTextMuted
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     is ConnectionState.Testing -> Text(
                         "Testing connection to remote...",

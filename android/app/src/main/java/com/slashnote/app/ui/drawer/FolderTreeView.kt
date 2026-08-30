@@ -561,8 +561,8 @@ fun MoveToDirectoryDialog(
                     Surface(
                         onClick = { selectedTarget = dirPath },
                         shape = RoundedCornerShape(8.dp),
-                        color = if (isSelected) StitchAccentCoral.copy(alpha = 0.2f) else StitchCardBg,
-                        border = BorderStroke(1.dp, if (isSelected) StitchAccentCoral else StitchBorder),
+                        color = if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceVariant,
+                        border = BorderStroke(1.dp, if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Row(

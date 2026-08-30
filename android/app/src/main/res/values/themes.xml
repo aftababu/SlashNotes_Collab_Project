@@ -2,16 +2,16 @@
 <resources>
     <!-- Base App Theme (Light Theme Default) -->
     <style name="Theme.SlashNote" parent="android:Theme.Material.NoActionBar">
-        <item name="android:windowBackground">#F8F9FA</item>
-        <item name="android:statusBarColor">#F8F9FA</item>
-        <item name="android:navigationBarColor">#F8F9FA</item>
+        <item name="android:windowBackground">#FFFFFF</item>
+        <item name="android:statusBarColor">#FFFFFF</item>
+        <item name="android:navigationBarColor">#FFFFFF</item>
     </style>
 
     <!-- SplashScreen Theme (Light Mode Default) -->
     <style name="Theme.SlashNote.Starting" parent="Theme.SplashScreen">
-        <item name="windowSplashScreenBackground">#F8F9FA</item>
+        <item name="windowSplashScreenBackground">#FFFFFF</item>
         <item name="windowSplashScreenAnimatedIcon">@drawable/slashnote_logo</item>
-        <item name="windowSplashScreenIconBackgroundColor">#F8F9FA</item>
+        <item name="windowSplashScreenIconBackgroundColor">#FFFFFF</item>
         <item name="postSplashScreenTheme">@style/Theme.SlashNote</item>
     </style>
 </resources>

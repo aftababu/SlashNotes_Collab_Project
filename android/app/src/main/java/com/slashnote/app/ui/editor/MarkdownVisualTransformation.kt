@@ -61,11 +61,16 @@ fun markdownHash(text: String): Long {
  */
 class MarkdownVisualTransformation(
     private val isDarkTheme: Boolean,
-    private val cache: MarkdownSpanCache = MarkdownSpanCache()
+    private val cache: MarkdownSpanCache = MarkdownSpanCache(),
+    private val searchQuery: String = "",
+    private val searchMatches: List<Int> = emptyList(),
+    private val currentMatchIndex: Int = 0
 ) : VisualTransformation {
 
     private var lastHash: Long = Long.MIN_VALUE
     private var lastDarkTheme: Boolean = !isDarkTheme
+    private var lastSearchQuery: String = ""
+    private var lastCurrentMatchIndex: Int = -1
     private var lastResult: TransformedText? = null
 
     override fun filter(text: AnnotatedString): TransformedText {
@@ -76,11 +81,11 @@ class MarkdownVisualTransformation(
 
         val hash = markdownHash(rawText)
 
-        if (hash == lastHash && isDarkTheme == lastDarkTheme && lastResult != null) {
+        if (hash == lastHash && isDarkTheme == lastDarkTheme && searchQuery == lastSearchQuery && currentMatchIndex == lastCurrentMatchIndex && lastResult != null) {
             return lastResult!!
         }
 
-        val spans = cache.get(hash) ?: return TransformedText(text, OffsetMapping.Identity)
+        val spans = cache.get(hash) ?: emptyList()
 
         val builder = AnnotatedString.Builder(rawText)
         val textLength = rawText.length
@@ -102,9 +107,32 @@ class MarkdownVisualTransformation(
             }
         }
 
+        // Apply In-Note Search Highlighting
+        if (searchQuery.isNotEmpty() && searchMatches.isNotEmpty()) {
+            val queryLen = searchQuery.length
+            searchMatches.forEachIndexed { idx, matchStart ->
+                val matchEnd = (matchStart + queryLen).coerceAtMost(textLength)
+                if (matchStart >= 0 && matchEnd <= textLength && matchStart < matchEnd) {
+                    val isActive = idx == currentMatchIndex
+                    val highlightBg = if (isActive) Color(0xFFF59E0B) else Color(0xFFFDE047)
+                    builder.addStyle(
+                        SpanStyle(
+                            background = highlightBg,
+                            color = Color(0xFF111827),
+                            fontWeight = FontWeight.Bold
+                        ),
+                        matchStart,
+                        matchEnd
+                    )
+                }
+            }
+        }
+
         val result = TransformedText(builder.toAnnotatedString(), OffsetMapping.Identity)
         lastHash = hash
         lastDarkTheme = isDarkTheme
+        lastSearchQuery = searchQuery
+        lastCurrentMatchIndex = currentMatchIndex
         lastResult = result
         return result
     }

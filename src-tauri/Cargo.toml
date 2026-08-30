@@ -1,6 +1,6 @@
 [package]
 name = "slashnote"
-version = "0.10.0"
+version = "1.0.0"
 description = "An offline markdown-based notes app"
 edition = "2021"
 
