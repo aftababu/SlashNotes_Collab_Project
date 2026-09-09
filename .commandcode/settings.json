@@ -49,7 +49,8 @@
       "Shell(do:*)",
       "Shell(done:*)",
       "Shell(cd /home/aftababu/Projects/Active/SlashNote && for f in dist/assets/*.js; do k=$(grep -oiE 'katex' \"$f\" | wc -l); m=$(grep -oiE 'beautiful-mermaid|renderMermaid' \"$f\" | wc -l); if [ \"$k\" -gt 0 ] || [ \"$m\" -gt 0 ]; then echo \"$f katex=$k mermaid=$m size=$(stat -c%s \"$f\")\"; fi; done)",
-      "Shell(cd /home/aftababu/Projects/Active/SlashNote && find ~/.cargo/registry/src -path \"*tantivy-0.22.1/src/schema.rs\" 2>/dev/null; grep -rn \"pub fn num_fields\\|pub fn fields\\b\\|impl PartialEq\\|pub struct Schema\\|pub fn get_field\" $(find ~/.cargo/registry/src -path \"*tantivy-0.22.1/src/schema.rs\" 2>/dev/null) 2>/dev/null | head -20)"
+      "Shell(cd /home/aftababu/Projects/Active/SlashNote && find ~/.cargo/registry/src -path \"*tantivy-0.22.1/src/schema.rs\" 2>/dev/null; grep -rn \"pub fn num_fields\\|pub fn fields\\b\\|impl PartialEq\\|pub struct Schema\\|pub fn get_field\" $(find ~/.cargo/registry/src -path \"*tantivy-0.22.1/src/schema.rs\" 2>/dev/null) 2>/dev/null | head -20)",
+      "Shell(cd /home/aftababu/Projects/Active/SlashNote && ls -la release/ 2>/dev/null; echo \"---\"; cat build.sh 2>/dev/null | head -40)"
     ],
     "deny": [],
     "defaultMode": "default"

@@ -550,13 +550,9 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
     document.documentElement.style.setProperty("--editor-max-width", value);
   }, []);
 
-  // Don't render until initialized to prevent flash
-  if (!isInitialized) {
-    return null;
-  }
-
   // Memoize the context value so consumers don't re-render when the provider
   // re-renders for unrelated reasons (only when an actual dependency changes).
+  // NOTE: must be called before any early return to satisfy the Rules of Hooks.
   const value = useMemo(
     () => ({
       theme,
@@ -607,6 +603,11 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
       resetAllCustomColors,
     ],
   );
+
+  // Don't render until initialized to prevent flash
+  if (!isInitialized) {
+    return null;
+  }
 
   return (
     <ThemeContext.Provider value={value}>
