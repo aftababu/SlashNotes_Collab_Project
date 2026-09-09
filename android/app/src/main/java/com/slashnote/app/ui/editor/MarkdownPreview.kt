@@ -355,6 +355,16 @@ internal sealed class MdBlock {
 
 internal enum class Align { LEFT, CENTER, RIGHT }
 
+// Precompiled regexes (compiling a Kotlin `Regex` creates a new `Pattern` each
+// call, which is expensive in the hot parsing path).
+private val HRULE_REGEX = Regex("^(\\*{3,}|-{3,}|_{3,})$")
+private val HEADING_REGEX = Regex("^(#{1,6})\\s+(.*)$")
+private val LIST_ITEM_REGEX = Regex("^\\s*([-*+]|\\d+\\.)\\s+(.*)$")
+private val TASK_REGEX = Regex("^\\[([ xX])\\]\\s+(.*)$")
+private val HEADING_PREFIX_REGEX = Regex("^#{1,6}\\s+")
+private val LIST_PREFIX_REGEX = Regex("^\\s*([-*+]|\\d+\\.)\\s+")
+private val TABLE_SPLIT_REGEX = Regex("(?<!\\\\)\\|")
+
 internal fun parseMarkdownBlocks(source: String): List<MdBlock> {
     val lines = source.replace("\r\n", "\n").split("\n")
     val blocks = mutableListOf<MdBlock>()
@@ -400,7 +410,7 @@ internal fun parseMarkdownBlocks(source: String): List<MdBlock> {
             continue
         }
 
-        if (trimmed.matches(Regex("^(\\*{3,}|-{3,}|_{3,})$"))) {
+        if (trimmed.matches(HRULE_REGEX)) {
             val (so, eo) = getOffsets(i, i)
             blocks.add(MdBlock.HorizontalRule(nextId(), so, eo))
             i++
@@ -476,7 +486,7 @@ internal fun parseMarkdownBlocks(source: String): List<MdBlock> {
             continue
         }
 
-        val headingMatch = Regex("^(#{1,6})\\s+(.*)$").find(trimmed)
+        val headingMatch = HEADING_REGEX.find(trimmed)
         if (headingMatch != null) {
             val level = headingMatch.groupValues[1].length
             val (so, eo) = getOffsets(i, i)
@@ -506,7 +516,7 @@ internal fun parseMarkdownBlocks(source: String): List<MdBlock> {
             }
         }
 
-        val listMatch = Regex("^\\s*([-*+]|\\d+\\.)\\s+(.*)$").find(line)
+        val listMatch = LIST_ITEM_REGEX.find(line)
         if (listMatch != null) {
             val startLine = i
             val ordered = listMatch.groupValues[1].any { it.isDigit() }
@@ -514,7 +524,7 @@ internal fun parseMarkdownBlocks(source: String): List<MdBlock> {
             val items = mutableListOf<MdBlock.ListItem>()
             val listBlockId = nextId()
             while (i < n) {
-                val m = Regex("^\\s*([-*+]|\\d+\\.)\\s+(.*)$").find(lines[i])
+                val m = LIST_ITEM_REGEX.find(lines[i])
                 if (m == null) {
                     if (items.isNotEmpty() && (lines[i].startsWith("  ") || lines[i].startsWith("\t") || lines[i].isBlank())) {
                         val last = items[items.size - 1]
@@ -536,7 +546,7 @@ internal fun parseMarkdownBlocks(source: String): List<MdBlock> {
                 if (isOrderedMarker != ordered) break
                 var content = m.groupValues[2]
                 var checked: Boolean? = null
-                val taskMatch = Regex("^\\[([ xX])\\]\\s+(.*)$").find(content)
+                val taskMatch = TASK_REGEX.find(content)
                 if (taskMatch != null) {
                     checked = taskMatch.groupValues[1] in listOf("x", "X")
                     content = taskMatch.groupValues[2]
@@ -555,11 +565,11 @@ internal fun parseMarkdownBlocks(source: String): List<MdBlock> {
         while (i < n) {
             val l = lines[i]
             if (l.trim().isEmpty()) break
-            if (Regex("^#{1,6}\\s+").containsMatchIn(l.trim())) break
+            if (HEADING_PREFIX_REGEX.containsMatchIn(l.trim())) break
             if (isFenceStart(l)) break
-            if (l.trim().matches(Regex("^(\\*{3,}|-{3,}|_{3,})$"))) break
+            if (l.trim().matches(HRULE_REGEX)) break
             if (l.trimStart().startsWith(">")) break
-            if (Regex("^\\s*([-*+]|\\d+\\.)\\s+").containsMatchIn(l)) break
+            if (LIST_PREFIX_REGEX.containsMatchIn(l)) break
             paraLines.add(l)
             i++
         }
@@ -620,7 +630,7 @@ private fun splitTableRow(row: String): List<String> {
     var s = row.trim()
     if (s.startsWith("|")) s = s.substring(1)
     if (s.endsWith("|")) s = s.substring(0, s.length - 1)
-    val split = s.split(Regex("(?<!\\\\)\\|"))
+    val split = s.split(TABLE_SPLIT_REGEX)
     return split.map { cell ->
         cell.trim().replace("\\|", "|")
     }

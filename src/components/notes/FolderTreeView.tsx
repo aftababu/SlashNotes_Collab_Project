@@ -537,12 +537,16 @@ export function FolderTreeView({
   const [knownFolders, setKnownFolders] = useState<string[]>([]);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Load known folders from disk (includes empty folders)
+  // Load known folders from disk (includes empty folders). Debounced so a burst
+  // of note refreshes (e.g. after each save) doesn't trigger repeated IPC calls.
   useEffect(() => {
-    notesService
-      .listFolders()
-      .then(setKnownFolders)
-      .catch(() => setKnownFolders([]));
+    const timer = setTimeout(() => {
+      notesService
+        .listFolders()
+        .then(setKnownFolders)
+        .catch(() => setKnownFolders([]));
+    }, 300);
+    return () => clearTimeout(timer);
   }, [notes]);
 
   // Persist collapsed state

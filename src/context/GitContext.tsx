@@ -558,10 +558,12 @@ export function GitProvider({ children }: { children: ReactNode }) {
   // Refresh status on file changes (debounced via existing file watcher)
   // Uses a ref so the listener is registered only once
   useEffect(() => {
+    let isCancelled = false;
     let unlisten: (() => void) | undefined;
     let debounceTimer: number | undefined;
 
     listen("file-change", () => {
+      if (isCancelled) return;
       if (!gitEnabledRef.current) return;
 
       // Debounce git status refresh to avoid excessive calls
@@ -572,10 +574,15 @@ export function GitProvider({ children }: { children: ReactNode }) {
         refreshStatusRef.current();
       }, 1000);
     }).then((fn) => {
-      unlisten = fn;
+      if (isCancelled) {
+        fn();
+      } else {
+        unlisten = fn;
+      }
     });
 
     return () => {
+      isCancelled = true;
       if (unlisten) unlisten();
       if (debounceTimer) clearTimeout(debounceTimer);
     };

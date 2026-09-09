@@ -1651,10 +1651,15 @@ fun NoteEditorScreen(
         }
     }
 
-    LaunchedEffect(textFieldValue, undoRedoManager.canUndo(), undoRedoManager.canRedo()) {
+    // Keep the latest undo/redo callbacks in a ref so the effect below keys only
+    // on canUndo()/canRedo() (not the full TextFieldValue, which changes per keystroke).
+    val performUndoState by rememberUpdatedState(performUndo)
+    val performRedoState by rememberUpdatedState(performRedo)
+
+    LaunchedEffect(undoRedoManager.canUndo(), undoRedoManager.canRedo()) {
         onRegisterUndoRedo(
-            if (undoRedoManager.canUndo()) performUndo else null,
-            if (undoRedoManager.canRedo()) performRedo else null
+            if (undoRedoManager.canUndo()) ({ performUndoState() }) else null,
+            if (undoRedoManager.canRedo()) ({ performRedoState() }) else null
         )
     }
 

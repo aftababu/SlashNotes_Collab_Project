@@ -1,17 +1,22 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  useRef,
+  lazy,
+  Suspense,
+} from "react";
 import { toast } from "sonner";
-import { NotesProvider, useNotes } from "./context/NotesContext";
+import { NotesProvider, useNotesData, useNotesActions } from "./context/NotesContext";
 import { ThemeProvider, useTheme } from "./context/ThemeContext";
 import { listen } from "@tauri-apps/api/event";
 import { GitProvider } from "./context/GitContext";
 import { TooltipProvider, Toaster } from "./components/ui";
 import { Sidebar } from "./components/layout/Sidebar";
-import { Editor } from "./components/editor/Editor";
 import type { Editor as TiptapEditor } from "@tiptap/react";
 import { FolderPicker } from "./components/layout/FolderPicker";
 import { CustomTitleBar } from "./components/layout/CustomTitleBar";
-import { CommandPalette } from "./components/command-palette/CommandPalette";
-import { SettingsPage } from "./components/settings";
 import {
   SpinnerIcon,
   ClaudeIcon,
@@ -19,10 +24,30 @@ import {
   OpenCodeIcon,
   OllamaIcon,
 } from "./components/icons";
-import { AiEditModal } from "./components/ai/AiEditModal";
 import { AiResponseToast } from "./components/ai/AiResponseToast";
 import { KeyboardShortcutsModal } from "./components/shortcuts/KeyboardShortcutsModal";
-import { PreviewApp } from "./components/preview/PreviewApp";
+
+const Editor = lazy(() =>
+  import("./components/editor/Editor").then((m) => ({ default: m.Editor })),
+);
+const SettingsPage = lazy(() =>
+  import("./components/settings").then((m) => ({ default: m.SettingsPage })),
+);
+const CommandPalette = lazy(() =>
+  import("./components/command-palette/CommandPalette").then((m) => ({
+    default: m.CommandPalette,
+  })),
+);
+const AiEditModal = lazy(() =>
+  import("./components/ai/AiEditModal").then((m) => ({
+    default: m.AiEditModal,
+  })),
+);
+const PreviewApp = lazy(() =>
+  import("./components/preview/PreviewApp").then((m) => ({
+    default: m.PreviewApp,
+  })),
+);
 import {
   check as checkForUpdate,
   type Update,
@@ -51,17 +76,19 @@ function AppContent() {
   const {
     notesFolder,
     isLoading,
-    createNote,
-    duplicateNote,
     notes,
     selectedNoteId,
-    selectNote,
     searchQuery,
     searchResults,
-    reloadCurrentNote,
     currentNote,
+  } = useNotesData();
+  const {
+    createNote,
+    duplicateNote,
+    selectNote,
+    reloadCurrentNote,
     syncNotesFolder,
-  } = useNotes();
+  } = useNotesActions();
   const { interfaceZoom, setInterfaceZoom, reloadSettings } = useTheme();
   const interfaceZoomRef = useRef(interfaceZoom);
   interfaceZoomRef.current = interfaceZoom;
@@ -194,6 +221,17 @@ function AppContent() {
     return searchQuery.trim() ? searchResults : notes;
   }, [searchQuery, searchResults, notes]);
 
+  // Refs for values read inside the global keydown handler, so the effect only
+  // re-registers when stable callbacks change (not on every notes/selection update).
+  const displayItemsRef = useRef(displayItems);
+  displayItemsRef.current = displayItems;
+  const selectedNoteIdRef = useRef(selectedNoteId);
+  selectedNoteIdRef.current = selectedNoteId;
+  const focusModeRef = useRef(focusMode);
+  focusModeRef.current = focusMode;
+  const viewRef = useRef(view);
+  viewRef.current = view;
+
   // Global keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -238,7 +276,7 @@ function AppContent() {
       }
 
       // Block all other shortcuts when in settings view
-      if (view === "settings") {
+      if (viewRef.current === "settings") {
         return;
       }
 
@@ -261,7 +299,7 @@ function AppContent() {
       }
 
       // Escape exits focus mode when not in editor
-      if (e.key === "Escape" && focusMode && !isInEditor) {
+      if (e.key === "Escape" && focusModeRef.current && !isInEditor) {
         e.preventDefault();
         toggleFocusMode();
         return;
@@ -328,7 +366,7 @@ function AppContent() {
 
       // Delete current note (note list focused, or editor on empty note)
       if (
-        selectedNoteId &&
+        selectedNoteIdRef.current &&
         !isInInput &&
         (e.key === "Delete" ||
           (e.key === "Backspace" && (e.metaKey || e.ctrlKey))) &&
@@ -336,7 +374,9 @@ function AppContent() {
       ) {
         e.preventDefault();
         window.dispatchEvent(
-          new CustomEvent("request-delete-note", { detail: selectedNoteId }),
+          new CustomEvent("request-delete-note", {
+            detail: selectedNoteIdRef.current,
+          }),
         );
         return;
       }
@@ -347,10 +387,10 @@ function AppContent() {
         e.key.toLowerCase() === "d" &&
         !isInEditor &&
         !isInInput &&
-        selectedNoteId
+        selectedNoteIdRef.current
       ) {
         e.preventDefault();
-        duplicateNote(selectedNoteId);
+        duplicateNote(selectedNoteIdRef.current);
         return;
       }
 
@@ -364,33 +404,31 @@ function AppContent() {
       // Arrow keys for note navigation
       // Skip if folder tree view is handling its own navigation
       const isInFolderTree = !!(e.target as HTMLElement).closest("[data-folder-tree]");
+      const items = displayItemsRef.current;
+      const selId = selectedNoteIdRef.current;
       if (
-        displayItems.length > 0 &&
+        items.length > 0 &&
         (e.key === "ArrowDown" || e.key === "ArrowUp") &&
         ((!isInEditor && !isInInput) || isEditorEmpty) &&
         !isInFolderTree
       ) {
         e.preventDefault();
-        const currentIndex = displayItems.findIndex(
-          (n) => n.id === selectedNoteId,
-        );
+        const currentIndex = items.findIndex((n) => n.id === selId);
         let newIndex: number;
 
         if (e.key === "ArrowDown") {
-          newIndex =
-            currentIndex < displayItems.length - 1 ? currentIndex + 1 : 0;
+          newIndex = currentIndex < items.length - 1 ? currentIndex + 1 : 0;
         } else {
-          newIndex =
-            currentIndex > 0 ? currentIndex - 1 : displayItems.length - 1;
+          newIndex = currentIndex > 0 ? currentIndex - 1 : items.length - 1;
         }
 
-        selectNote(displayItems[newIndex].id);
+        selectNote(items[newIndex].id);
         window.dispatchEvent(new CustomEvent("focus-note-list"));
         return;
       }
 
       // Enter to focus editor
-      if (e.key === "Enter" && selectedNoteId && !isInEditor && !isInInput) {
+      if (e.key === "Enter" && selId && !isInEditor && !isInInput) {
         e.preventDefault();
         const editor = document.querySelector(".ProseMirror") as HTMLElement;
         if (editor) {
@@ -432,15 +470,11 @@ function AppContent() {
   }, [
     createNote,
     duplicateNote,
-    displayItems,
     reloadCurrentNote,
-    selectedNoteId,
     selectNote,
     toggleSettings,
     toggleSidebar,
     toggleFocusMode,
-    focusMode,
-    view,
     setInterfaceZoom,
   ]);
 
@@ -470,7 +504,15 @@ function AppContent() {
       <div className="flex-1 flex overflow-hidden">
         {/* Settings View */}
         {view === "settings" ? (
-          <SettingsPage onBack={closeSettings} />
+          <Suspense
+            fallback={
+              <div className="flex-1 flex items-center justify-center">
+                <SpinnerIcon className="w-5 h-5 stroke-[1.5] animate-spin text-text-muted" />
+              </div>
+            }
+          >
+            <SettingsPage onBack={closeSettings} />
+          </Suspense>
         ) : (
           <>
             {/* Notes View */}
@@ -482,14 +524,22 @@ function AppContent() {
                 >
                   <Sidebar onOpenSettings={toggleSettings} />
                 </div>
-                <Editor
-                  onToggleSidebar={toggleSidebar}
-                  sidebarVisible={sidebarVisible}
-                  focusMode={focusMode}
-                  onEditorReady={(editor) => {
-                    editorRef.current = editor;
-                  }}
-                />
+                <Suspense
+                  fallback={
+                    <div className="flex-1 flex items-center justify-center">
+                      <SpinnerIcon className="w-5 h-5 stroke-[1.5] animate-spin text-text-muted" />
+                    </div>
+                  }
+                >
+                  <Editor
+                    onToggleSidebar={toggleSidebar}
+                    sidebarVisible={sidebarVisible}
+                    focusMode={focusMode}
+                    onEditorReady={(editor) => {
+                      editorRef.current = editor;
+                    }}
+                  />
+                </Suspense>
               </>
             )}
           </>
@@ -512,26 +562,32 @@ function AppContent() {
         onClose={() => setShortcutsOpen(false)}
       />
 
-      <CommandPalette
-        open={paletteOpen}
-        onClose={handleClosePalette}
-        onOpenSettings={toggleSettings}
-        onOpenShortcuts={() => setShortcutsOpen(true)}
-        onOpenAiModal={(provider) => {
-          setAiProvider(provider);
-          setAiModalOpen(true);
-        }}
-        focusMode={focusMode}
-        onToggleFocusMode={toggleFocusMode}
-        editorRef={editorRef}
-      />
-      <AiEditModal
-        open={aiModalOpen}
-        provider={aiProvider}
-        onBack={handleBackToPalette}
-        onExecute={handleAiEdit}
-        isExecuting={aiEditing}
-      />
+      <Suspense fallback={null}>
+        <CommandPalette
+          open={paletteOpen}
+          onClose={handleClosePalette}
+          onOpenSettings={toggleSettings}
+          onOpenShortcuts={() => setShortcutsOpen(true)}
+          onOpenAiModal={(provider) => {
+            setAiProvider(provider);
+            setAiModalOpen(true);
+          }}
+          focusMode={focusMode}
+          onToggleFocusMode={toggleFocusMode}
+          editorRef={editorRef}
+        />
+      </Suspense>
+      {aiModalOpen && (
+        <Suspense fallback={null}>
+          <AiEditModal
+            open={aiModalOpen}
+            provider={aiProvider}
+            onBack={handleBackToPalette}
+            onExecute={handleAiEdit}
+            isExecuting={aiEditing}
+          />
+        </Suspense>
+      )}
 
       {/* AI Editing Overlay */}
       {aiEditing && (
@@ -678,7 +734,15 @@ function App() {
         <NotesProvider>
           <GitProvider>
             {isPreview && previewFile ? (
-              <PreviewApp filePath={decodeURIComponent(previewFile)} />
+              <Suspense
+                fallback={
+                  <div className="h-full flex items-center justify-center">
+                    <SpinnerIcon className="w-5 h-5 stroke-[1.5] animate-spin text-text-muted" />
+                  </div>
+                }
+              >
+                <PreviewApp filePath={decodeURIComponent(previewFile)} />
+              </Suspense>
             ) : (
               <AppContent />
             )}

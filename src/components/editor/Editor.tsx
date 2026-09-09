@@ -4,9 +4,11 @@ import {
   useRef,
   useCallback,
   useState,
+  memo,
 } from "react";
 import {
   useEditor,
+  useEditorState,
   EditorContent,
   ReactRenderer,
   ReactNodeViewRenderer,
@@ -248,9 +250,29 @@ interface FormatBarProps {
   onAddImage: () => void;
 }
 
-// FormatBar must re-render with parent to reflect editor.isActive() state changes
-// (editor instance is mutable, so memo would cause stale active states)
-function FormatBar({
+// Active-state snapshot derived from the editor. `useEditorState` subscribes
+// only to the values this selector returns, so FormatBar re-renders solely when
+// one of these booleans flips — not on every keystroke/selection change.
+interface FormatBarActiveState {
+  bold: boolean;
+  italic: boolean;
+  strike: boolean;
+  h1: boolean;
+  h2: boolean;
+  h3: boolean;
+  h4: boolean;
+  bulletList: boolean;
+  orderedList: boolean;
+  taskList: boolean;
+  blockquote: boolean;
+  code: boolean;
+  codeBlock: boolean;
+  blockMath: boolean;
+  link: boolean;
+  table: boolean;
+}
+
+const FormatBar = memo(function FormatBar({
   editor,
   onAddLink,
   onAddBlockMath,
@@ -258,27 +280,52 @@ function FormatBar({
 }: FormatBarProps) {
   const [tableMenuOpen, setTableMenuOpen] = useState(false);
 
-  if (!editor) return null;
+  const active = useEditorState<FormatBarActiveState | null>({
+    editor,
+    selector: ({ editor: ed }) =>
+      ed
+        ? {
+            bold: ed.isActive("bold"),
+            italic: ed.isActive("italic"),
+            strike: ed.isActive("strike"),
+            h1: ed.isActive("heading", { level: 1 }),
+            h2: ed.isActive("heading", { level: 2 }),
+            h3: ed.isActive("heading", { level: 3 }),
+            h4: ed.isActive("heading", { level: 4 }),
+            bulletList: ed.isActive("bulletList"),
+            orderedList: ed.isActive("orderedList"),
+            taskList: ed.isActive("taskList"),
+            blockquote: ed.isActive("blockquote"),
+            code: ed.isActive("code"),
+            codeBlock: ed.isActive("codeBlock"),
+            blockMath: ed.isActive("blockMath"),
+            link: ed.isActive("link"),
+            table: ed.isActive("table"),
+          }
+        : null,
+  });
+
+  if (!editor || !active) return null;
 
   return (
     <div className="flex items-center gap-1 px-3 pb-2 border-b border-border overflow-x-auto scrollbar-none">
       <ToolbarButton
         onClick={() => editor.chain().focus().toggleBold().run()}
-        isActive={editor.isActive("bold")}
+        isActive={active.bold}
         title={`Bold (${mod}${isMac ? "" : "+"}B)`}
       >
         <BoldIcon className="w-4.5 h-4.5 stroke-[1.5]" />
       </ToolbarButton>
       <ToolbarButton
         onClick={() => editor.chain().focus().toggleItalic().run()}
-        isActive={editor.isActive("italic")}
+        isActive={active.italic}
         title={`Italic (${mod}${isMac ? "" : "+"}I)`}
       >
         <ItalicIcon className="w-4.5 h-4.5 stroke-[1.5]" />
       </ToolbarButton>
       <ToolbarButton
         onClick={() => editor.chain().focus().toggleStrike().run()}
-        isActive={editor.isActive("strike")}
+        isActive={active.strike}
         title={`Strikethrough (${mod}${isMac ? "" : "+"}${shift}${isMac ? "" : "+"}S)`}
       >
         <StrikethroughIcon className="w-4.5 h-4.5 stroke-[1.5]" />
@@ -288,28 +335,28 @@ function FormatBar({
 
       <ToolbarButton
         onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
-        isActive={editor.isActive("heading", { level: 1 })}
+        isActive={active.h1}
         title={`Heading 1 (${mod}${isMac ? "" : "+"}${alt}${isMac ? "" : "+"}1)`}
       >
         <Heading1Icon className="w-4.5 h-4.5 stroke-[1.5]" />
       </ToolbarButton>
       <ToolbarButton
         onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
-        isActive={editor.isActive("heading", { level: 2 })}
+        isActive={active.h2}
         title={`Heading 2 (${mod}${isMac ? "" : "+"}${alt}${isMac ? "" : "+"}2)`}
       >
         <Heading2Icon className="w-4.5 h-4.5 stroke-[1.5]" />
       </ToolbarButton>
       <ToolbarButton
         onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
-        isActive={editor.isActive("heading", { level: 3 })}
+        isActive={active.h3}
         title={`Heading 3 (${mod}${isMac ? "" : "+"}${alt}${isMac ? "" : "+"}3)`}
       >
         <Heading3Icon className="w-4.5 h-4.5 stroke-[1.5]" />
       </ToolbarButton>
       <ToolbarButton
         onClick={() => editor.chain().focus().toggleHeading({ level: 4 }).run()}
-        isActive={editor.isActive("heading", { level: 4 })}
+        isActive={active.h4}
         title={`Heading 4 (${mod}${isMac ? "" : "+"}${alt}${isMac ? "" : "+"}4)`}
       >
         <Heading4Icon className="w-4.5 h-4.5 stroke-[1.5]" />
@@ -319,49 +366,49 @@ function FormatBar({
 
       <ToolbarButton
         onClick={() => editor.chain().focus().toggleBulletList().run()}
-        isActive={editor.isActive("bulletList")}
+        isActive={active.bulletList}
         title={`Bullet List (${mod}${isMac ? "" : "+"}${shift}${isMac ? "" : "+"}8)`}
       >
         <ListIcon className="w-4.5 h-4.5 stroke-[1.5]" />
       </ToolbarButton>
       <ToolbarButton
         onClick={() => editor.chain().focus().toggleOrderedList().run()}
-        isActive={editor.isActive("orderedList")}
+        isActive={active.orderedList}
         title={`Numbered List (${mod}${isMac ? "" : "+"}${shift}${isMac ? "" : "+"}7)`}
       >
         <ListOrderedIcon className="w-4.5 h-4.5 stroke-[1.5]" />
       </ToolbarButton>
       <ToolbarButton
         onClick={() => editor.chain().focus().toggleTaskList().run()}
-        isActive={editor.isActive("taskList")}
+        isActive={active.taskList}
         title="Task List"
       >
         <CheckSquareIcon className="w-4.5 h-4.5 stroke-[1.5]" />
       </ToolbarButton>
       <ToolbarButton
         onClick={() => editor.chain().focus().toggleBlockquote().run()}
-        isActive={editor.isActive("blockquote")}
+        isActive={active.blockquote}
         title={`Blockquote (${mod}${isMac ? "" : "+"}${shift}${isMac ? "" : "+"}B)`}
       >
         <QuoteIcon className="w-4.5 h-4.5 stroke-[1.5]" />
       </ToolbarButton>
       <ToolbarButton
         onClick={() => editor.chain().focus().toggleCode().run()}
-        isActive={editor.isActive("code")}
+        isActive={active.code}
         title={`Inline Code (${mod}${isMac ? "" : "+"}E)`}
       >
         <InlineCodeIcon className="w-4.5 h-4.5 stroke-[1.5]" />
       </ToolbarButton>
       <ToolbarButton
         onClick={() => editor.chain().focus().toggleCodeBlock().run()}
-        isActive={editor.isActive("codeBlock")}
+        isActive={active.codeBlock}
         title={`Code Block (${mod}${isMac ? "" : "+"}${alt}${isMac ? "" : "+"}C)`}
       >
         <CodeIcon className="w-4.5 h-4.5 stroke-[1.5]" />
       </ToolbarButton>
       <ToolbarButton
         onClick={onAddBlockMath}
-        isActive={editor.isActive("blockMath")}
+        isActive={active.blockMath}
         title="Block Math"
       >
         <BlockMathIcon className="w-4.5 h-4.5 stroke-[1.5]" />
@@ -378,7 +425,7 @@ function FormatBar({
 
       <ToolbarButton
         onClick={onAddLink}
-        isActive={editor.isActive("link")}
+        isActive={active.link}
         title={`Add Link (${mod}${isMac ? "" : "+"}K)`}
       >
         <LinkIcon className="w-4.5 h-4.5 stroke-[1.5]" />
@@ -396,7 +443,7 @@ function FormatBar({
       <DropdownMenu.Root open={tableMenuOpen} onOpenChange={setTableMenuOpen}>
         <Tooltip content="Insert Table">
           <DropdownMenu.Trigger asChild>
-            <ToolbarButton isActive={editor.isActive("table")}>
+            <ToolbarButton isActive={active.table}>
               <TableIcon className="w-4.5 h-4.5 stroke-[1.5]" />
             </ToolbarButton>
           </DropdownMenu.Trigger>
@@ -425,7 +472,7 @@ function FormatBar({
       </DropdownMenu.Root>
     </div>
   );
-}
+});
 
 // Data source for preview mode — bypasses NotesContext
 export interface PreviewModeData {
@@ -548,8 +595,6 @@ export function Editor({
   const notes = notesCtx?.notes;
   const { textDirection } = useTheme();
   const [isSaving, setIsSaving] = useState(false);
-  // Force re-render when selection changes to update toolbar active states
-  const [, setSelectionKey] = useState(0);
   const [copyMenuOpen, setCopyMenuOpen] = useState(false);
   const [settings, setSettings] = useState<Settings | null>(null);
   // Delay transition classes until after initial mount to avoid format bar height animation on note load
@@ -1095,6 +1140,10 @@ export function Editor({
       Image.configure({
         inline: false,
         allowBase64: false,
+        HTMLAttributes: {
+          loading: "lazy",
+          decoding: "async",
+        },
       }),
       TaskList,
       TaskItem.configure({
@@ -1174,41 +1223,39 @@ export function Editor({
         if (imageItem) {
           const blob = imageItem.getAsFile();
           if (blob) {
-            // Convert blob to base64 and handle async operations
-            const reader = new FileReader();
-            reader.onload = async () => {
-              const base64 = (reader.result as string).split(",")[1]; // Remove data:image/...;base64, prefix
+            // Send raw bytes over IPC (avoids a full base64 string in memory).
+            blob
+              .arrayBuffer()
+              .then((buf) => Array.from(new Uint8Array(buf)))
+              .then(async (bytes) => {
+                try {
+                  const relativePath = await invoke<string>(
+                    "save_clipboard_image",
+                    { imageBytes: bytes },
+                  );
 
-              try {
-                // Save clipboard image
-                const relativePath = await invoke<string>(
-                  "save_clipboard_image",
-                  { base64Data: base64 },
-                );
+                  // Get notes folder and construct absolute path using Tauri's join
+                  const notesFolder = await invoke<string>("get_notes_folder");
+                  const absolutePath = await join(notesFolder, relativePath);
 
-                // Get notes folder and construct absolute path using Tauri's join
-                const notesFolder = await invoke<string>("get_notes_folder");
-                const absolutePath = await join(notesFolder, relativePath);
+                  // Convert to Tauri asset URL
+                  const assetUrl = convertFileSrc(absolutePath);
 
-                // Convert to Tauri asset URL
-                const assetUrl = convertFileSrc(absolutePath);
-
-                // Insert image
-                editorRef.current
-                  ?.chain()
-                  .focus()
-                  .setImage({ src: assetUrl })
-                  .run();
-              } catch (error) {
-                console.error("Failed to paste image:", error);
-                toast.error("Failed to paste image");
-              }
-            };
-            reader.onerror = () => {
-              console.error("Failed to read clipboard image:", reader.error);
-              toast.error("Failed to read clipboard image");
-            };
-            reader.readAsDataURL(blob);
+                  // Insert image
+                  editorRef.current
+                    ?.chain()
+                    .focus()
+                    .setImage({ src: assetUrl })
+                    .run();
+                } catch (error) {
+                  console.error("Failed to paste image:", error);
+                  toast.error("Failed to paste image");
+                }
+              })
+              .catch((error) => {
+                console.error("Failed to read clipboard image:", error);
+                toast.error("Failed to read clipboard image");
+              });
             return true; // Handled
           }
         }
@@ -1251,10 +1298,6 @@ export function Editor({
     onUpdate: () => {
       if (isLoadingRef.current) return;
       scheduleSave();
-    },
-    onSelectionUpdate: () => {
-      // Trigger re-render to update toolbar active states
-      setSelectionKey((k) => k + 1);
     },
     // Prevent flash of unstyled content during initial render
     immediatelyRender: false,

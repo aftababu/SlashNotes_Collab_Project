@@ -11,7 +11,8 @@ enum class UndoActionType { NONE, INSERT, DELETE, PASTE_OR_BULK }
  */
 class UndoRedoManager(
     private val debounceTimeoutMs: Long = 600L,
-    private val maxStackSize: Int = 50
+    private val maxStackSize: Int = 50,
+    private val maxRetainedChars: Int = 400_000
 ) {
     private val undoStack = ArrayDeque<TextFieldValue>()
     private val redoStack = ArrayDeque<TextFieldValue>()
@@ -51,6 +52,12 @@ class UndoRedoManager(
             // Push old state as new snapshot boundary
             if (undoStack.size >= maxStackSize) undoStack.removeFirst()
             undoStack.addLast(oldValue)
+            // Evict oldest snapshots when cumulative retained text exceeds the cap,
+            // so large notes don't pin megabytes of memory in the undo history.
+            var total = undoStack.sumOf { it.text.length }
+            while (total > maxRetainedChars && undoStack.size > 1) {
+                total -= undoStack.removeFirst().text.length
+            }
             redoStack.clear()
         }
 

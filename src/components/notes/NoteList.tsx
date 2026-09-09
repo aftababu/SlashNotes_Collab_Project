@@ -257,7 +257,7 @@ export function NoteList({
   const [settings, setSettings] = useState<Settings | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Load settings when notes change
+  // Load settings once on mount (pin state refreshes explicitly after pin/unpin)
   useEffect(() => {
     notesService
       .getSettings()
@@ -265,7 +265,7 @@ export function NoteList({
       .catch((error) => {
         console.error("Failed to load settings:", error);
       });
-  }, [notes]);
+  }, []);
 
   // Calculate pinned IDs set for efficient lookup
   const pinnedIds = useMemo(

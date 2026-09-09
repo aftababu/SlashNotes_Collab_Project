@@ -43,7 +43,13 @@
       "Shell(which brew 2>/dev/null; ls /home/linuxbrew/.linuxbrew/bin/brew 2>/dev/null; ls ~/.linuxbrew/bin/brew 2>/dev/null; echo \"---exit---\"; echo \"---mingw zlib files---\"; ls -la /usr/x86_64-w64-mingw32/lib/libz* 2>/dev/null; ls -la /usr/i686-w64-mingw32/lib/libz* 2>/dev/null; echo \"---mingw gcc targets---\"; ls /usr/bin/*mingw* 2>/dev/null | head)",
       "Shell(sudo -n true 2>&1; echo \"sudo_nopasswd_exit=$?\")",
       "Shell(ls -la ~/.cache/yay/nsis/src/ 2>/dev/null; echo \"---tarball contents---\"; tar tjf ~/.cache/yay/nsis/nsis-3.12-src.tar.bz2 2>/dev/null | grep -E \"Stubs/|Bin/|Include/|Plugins/\" | head -40)",
-      "Shell(echo \"=== i686 mingw zlib ===\"; ls -la /usr/i686-w64-mingw32/lib/libz* 2>/dev/null; ls -la /usr/i686-w64-mingw32/include/zlib.h 2>/dev/null; echo \"=== x86_64 mingw zlib ===\"; ls -la /usr/x86_64-w64-mingw32/lib/libz* 2>/dev/null; ls -la /usr/x86_64-w64-mingw32/include/zlib.h 2>/dev/null; echo \"=== pacman mingw zlib ===\"; pacman -Q mingw-w64-zlib mingw-w64-i686-zlib 2>/dev/null)"
+      "Shell(echo \"=== i686 mingw zlib ===\"; ls -la /usr/i686-w64-mingw32/lib/libz* 2>/dev/null; ls -la /usr/i686-w64-mingw32/include/zlib.h 2>/dev/null; echo \"=== x86_64 mingw zlib ===\"; ls -la /usr/x86_64-w64-mingw32/lib/libz* 2>/dev/null; ls -la /usr/x86_64-w64-mingw32/include/zlib.h 2>/dev/null; echo \"=== pacman mingw zlib ===\"; pacman -Q mingw-w64-zlib mingw-w64-i686-zlib 2>/dev/null)",
+      "Shell(cd /home/aftababu/Projects/Active/SlashNote && ls src/components/settings/ 2>/dev/null; echo \"---index exports---\"; grep -rn \"SettingsPage\" src/components/settings/index.* 2>/dev/null; echo \"---glob settings index---\"; find src/components/settings -maxdepth 1 -name \"index.*\" 2>/dev/null)",
+      "Shell(for:*)",
+      "Shell(do:*)",
+      "Shell(done:*)",
+      "Shell(cd /home/aftababu/Projects/Active/SlashNote && for f in dist/assets/*.js; do k=$(grep -oiE 'katex' \"$f\" | wc -l); m=$(grep -oiE 'beautiful-mermaid|renderMermaid' \"$f\" | wc -l); if [ \"$k\" -gt 0 ] || [ \"$m\" -gt 0 ]; then echo \"$f katex=$k mermaid=$m size=$(stat -c%s \"$f\")\"; fi; done)",
+      "Shell(cd /home/aftababu/Projects/Active/SlashNote && find ~/.cargo/registry/src -path \"*tantivy-0.22.1/src/schema.rs\" 2>/dev/null; grep -rn \"pub fn num_fields\\|pub fn fields\\b\\|impl PartialEq\\|pub struct Schema\\|pub fn get_field\" $(find ~/.cargo/registry/src -path \"*tantivy-0.22.1/src/schema.rs\" 2>/dev/null) 2>/dev/null | head -20)"
     ],
     "deny": [],
     "defaultMode": "default"

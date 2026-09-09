@@ -18,6 +18,8 @@ export async function checkClaudeCli(): Promise<boolean> {
   return invoke("ai_check_claude_cli");
 }
 
+let cachedProviders: AiProvider[] | null = null;
+
 export async function executeClaudeEdit(
   filePath: string,
   prompt: string
@@ -59,6 +61,9 @@ const providerCheckers: Record<AiProvider, () => Promise<boolean>> = {
 };
 
 export async function getAvailableAiProviders(): Promise<AiProvider[]> {
+  // Cache the result: installed CLIs don't change during a session, so this
+  // avoids re-running four CLI checks every time the command palette opens.
+  if (cachedProviders) return cachedProviders;
   const checks = await Promise.all(
     AI_PROVIDER_ORDER.map(async (provider) => {
       try {
@@ -70,7 +75,10 @@ export async function getAvailableAiProviders(): Promise<AiProvider[]> {
     }),
   );
 
-  return checks.filter((provider): provider is AiProvider => provider !== null);
+  cachedProviders = checks.filter(
+    (provider): provider is AiProvider => provider !== null,
+  );
+  return cachedProviders;
 }
 
 export async function executeOllamaEdit(

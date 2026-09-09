@@ -636,7 +636,8 @@ export function NotesProvider({ children }: { children: ReactNode }) {
 
       // Only refresh if there are external changes
       if (externalChanges.length > 0) {
-        refreshNotes();
+        // Debounce so bursts of external file events coalesce into one refresh.
+        scheduleRefresh();
 
         // If the currently selected note was changed externally, set flag (don't auto-reload)
         const currentId = selectedNoteIdRef.current;
@@ -659,7 +660,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
         unlisten();
       }
     };
-  }, [refreshNotes]);
+  }, [refreshNotes, scheduleRefresh]);
 
   // Listen for "select-note" events from the backend (CLI, drag-drop, Open With, import from preview)
   useEffect(() => {

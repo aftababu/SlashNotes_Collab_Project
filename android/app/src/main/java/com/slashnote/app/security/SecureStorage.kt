@@ -12,8 +12,14 @@ object SecureStorage {
     private const val KEY_GIT_BRANCH = "git_branch"
     private const val KEY_AUTO_SYNC = "auto_sync_enabled"
 
+    // Cache the SharedPreferences instance so we don't rebuild the MasterKey +
+    // EncryptedSharedPreferences on every getter (keystore lookups are expensive).
+    @Volatile
+    private var cachedPrefs: SharedPreferences? = null
+
     private fun getPrefs(context: Context): SharedPreferences {
-        return try {
+        cachedPrefs?.let { return it }
+        val prefs = try {
             val masterKey = MasterKey.Builder(context)
                 .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
                 .build()
@@ -29,6 +35,8 @@ object SecureStorage {
             // Fallback for older API or test environments
             context.getSharedPreferences(PREFS_FILENAME, Context.MODE_PRIVATE)
         }
+        cachedPrefs = prefs
+        return prefs
     }
 
     fun getGitToken(context: Context): String {

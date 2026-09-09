@@ -170,7 +170,9 @@ pub fn preview_note_name(template: String) -> String {
 
 #[uniffi::export]
 pub fn parse_markdown_tokens(content: String) -> Vec<MarkdownSpan> {
-    let mut spans = Vec::with_capacity(content.len() / 16);
+    // Conservative initial capacity: most markdown has relatively few spans
+    // relative to its length, so over-allocating by len/16 wastes memory.
+    let mut spans = Vec::with_capacity(content.len() / 64);
     if content.is_empty() {
         return spans;
     }

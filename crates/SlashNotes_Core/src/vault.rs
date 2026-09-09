@@ -35,14 +35,6 @@ struct VaultIndex {
 static VAULT_INDEXES: LazyLock<RwLock<HashMap<String, VaultIndex>>> =
     LazyLock::new(|| RwLock::new(HashMap::new()));
 
-/// Best-effort mtime in whole seconds since the Unix epoch.
-fn last_modified_unix(path: &Path) -> i64 {
-    fs::metadata(path)
-        .and_then(|m| m.modified())
-        .map(|t| t.duration_since(UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0))
-        .unwrap_or(0)
-}
-
 /// Skip any path segment that should be treated as hidden, including `.trash`.
 fn is_ignored_segment(segment: &str) -> bool {
     segment == TRASH_DIR || segment.starts_with('.')
@@ -61,9 +53,13 @@ fn scan_vault(root: &Path, dir: &Path, notes: &mut Vec<CachedNoteHeader>) {
         if is_ignored_segment(&name) {
             continue;
         }
-        if entry_path.is_dir() {
+        // Use DirEntry::file_type() instead of a separate stat syscall.
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
+        if file_type.is_dir() {
             scan_vault(root, &entry_path, notes);
-        } else if entry_path.is_file() {
+        } else if file_type.is_file() {
             let ext = entry_path.extension().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
             if ext != "md" && ext != "markdown" {
                 continue;
@@ -73,10 +69,16 @@ fn scan_vault(root: &Path, dir: &Path, notes: &mut Vec<CachedNoteHeader>) {
                 .map(|p| p.to_string_lossy().to_string())
                 .unwrap_or_else(|_| name.clone());
             let title = entry_path.file_stem().unwrap_or_default().to_string_lossy().to_string();
+            // Reuse the DirEntry metadata to avoid another fs::metadata call.
+            let mtime = entry
+                .metadata()
+                .and_then(|m| m.modified())
+                .map(|t| t.duration_since(UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0))
+                .unwrap_or(0);
             notes.push(CachedNoteHeader {
                 title,
                 relative_path: rel_path,
-                last_modified_unix: last_modified_unix(&entry_path),
+                last_modified_unix: mtime,
             });
         }
     }

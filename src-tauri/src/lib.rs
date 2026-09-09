@@ -1,5 +1,4 @@
 use anyhow::Result;
-use base64::Engine;
 use notify::{Config, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -169,23 +168,40 @@ pub struct SearchIndex {
     id_field: Field,
     title_field: Field,
     content_field: Field,
+    preview_field: Field,
     modified_field: Field,
 }
 
 impl SearchIndex {
     fn new(index_path: &PathBuf) -> Result<Self> {
-        // Build schema
+        // Build schema. Content is indexed (searchable) but not STORED, which
+        // keeps the on-disk index and search-time memory footprint small.
         let mut schema_builder = Schema::builder();
         let id_field = schema_builder.add_text_field("id", STRING | STORED);
         let title_field = schema_builder.add_text_field("title", TEXT | STORED);
-        let content_field = schema_builder.add_text_field("content", TEXT | STORED);
+        let content_field = schema_builder.add_text_field("content", TEXT);
+        let preview_field = schema_builder.add_text_field("preview", STORED);
         let modified_field = schema_builder.add_i64_field("modified", INDEXED | STORED);
         let schema = schema_builder.build();
 
-        // Create or open index
+        // Create or open index. If the persisted index was built with an older
+        // schema (different field count), recreate it to avoid out-of-bounds
+        // field access. The index is derived data, so a rebuild is safe.
         std::fs::create_dir_all(index_path)?;
-        let index = Index::create_in_dir(index_path, schema.clone())
-            .or_else(|_| Index::open_in_dir(index_path))?;
+        let index = match Index::create_in_dir(index_path, schema.clone()) {
+            Ok(index) => index,
+            Err(_) => {
+                let index = Index::open_in_dir(index_path)?;
+                if index.schema().num_fields() != schema.num_fields() {
+                    // Schema mismatch — drop the handle, wipe, and recreate.
+                    drop(index);
+                    std::fs::remove_dir_all(index_path)?;
+                    Index::create_in_dir(index_path, schema.clone())?
+                } else {
+                    index
+                }
+            }
+        };
 
         let reader = index
             .reader_builder()
@@ -202,6 +218,7 @@ impl SearchIndex {
             id_field,
             title_field,
             content_field,
+            preview_field,
             modified_field,
         })
     }
@@ -213,11 +230,14 @@ impl SearchIndex {
         let id_term = tantivy::Term::from_field_text(self.id_field, id);
         writer.delete_term(id_term);
 
+        let preview = generate_preview(content);
+
         // Add new document
         writer.add_document(doc!(
             self.id_field => id,
             self.title_field => title,
             self.content_field => content,
+            self.preview_field => preview,
             self.modified_field => modified,
         ))?;
 
@@ -229,6 +249,39 @@ impl SearchIndex {
         let mut writer = self.writer.lock().expect("search writer mutex");
         let id_term = tantivy::Term::from_field_text(self.id_field, id);
         writer.delete_term(id_term);
+        writer.commit()?;
+        Ok(())
+    }
+
+    // Batch-delete many notes with a single commit (avoids one commit per note).
+    fn delete_notes<I>(&self, ids: I) -> Result<()>
+    where
+        I: IntoIterator<Item = String>,
+    {
+        let mut writer = self.writer.lock().expect("search writer mutex");
+        for id in ids {
+            let id_term = tantivy::Term::from_field_text(self.id_field, &id);
+            writer.delete_term(id_term);
+        }
+        writer.commit()?;
+        Ok(())
+    }
+
+    // Batch-index many notes with a single commit.
+    fn index_notes(&self, items: &[(String, String, String, i64)]) -> Result<()> {
+        let mut writer = self.writer.lock().expect("search writer mutex");
+        for (id, title, content, modified) in items {
+            let id_term = tantivy::Term::from_field_text(self.id_field, id);
+            writer.delete_term(id_term);
+            let preview = generate_preview(content);
+            writer.add_document(doc!(
+                self.id_field => id.as_str(),
+                self.title_field => title.as_str(),
+                self.content_field => content.as_str(),
+                self.preview_field => preview,
+                self.modified_field => *modified,
+            ))?;
+        }
         writer.commit()?;
         Ok(())
     }
@@ -261,17 +314,16 @@ impl SearchIndex {
                 .unwrap_or("")
                 .to_string();
 
-            let content = doc
-                .get_first(self.content_field)
+            let preview = doc
+                .get_first(self.preview_field)
                 .and_then(|v| v.as_str())
-                .unwrap_or("");
+                .unwrap_or("")
+                .to_string();
 
             let modified = doc
                 .get_first(self.modified_field)
                 .and_then(|v| v.as_i64())
                 .unwrap_or(0);
-
-            let preview = generate_preview(content);
 
             results.push(SearchResult {
                 id,
@@ -312,11 +364,13 @@ impl SearchIndex {
                             .unwrap_or(0);
 
                         let title = extract_title_from_id(&id);
+                        let preview = generate_preview(&content);
 
                         writer.add_document(doc!(
                             self.id_field => id.as_str(),
                             self.title_field => title,
                             self.content_field => content.as_str(),
+                            self.preview_field => preview,
                             self.modified_field => modified,
                         ))?;
                     }
@@ -1358,16 +1412,21 @@ async fn delete_folder(path: String, state: State<'_, AppState>) -> Result<(), S
         return Err("Path is not a directory".to_string());
     }
 
-    // Remove notes from search index
+    // Remove notes from search index (batched into a single commit)
     {
         let index = state.search_index.lock().expect("search index mutex");
         if let Some(ref search_index) = *index {
-            let cache = state.notes_cache.read().expect("cache read lock");
-            let prefix = format!("{}/", path);
-            for note_id in cache.keys() {
-                if note_id.starts_with(&prefix) {
-                    let _ = search_index.delete_note(note_id);
-                }
+            let ids: Vec<String> = {
+                let cache = state.notes_cache.read().expect("cache read lock");
+                let prefix = format!("{}/", path);
+                cache
+                    .keys()
+                    .filter(|id| id.starts_with(&prefix))
+                    .cloned()
+                    .collect()
+            };
+            if !ids.is_empty() {
+                let _ = search_index.delete_notes(ids);
             }
         }
     }
@@ -1481,15 +1540,50 @@ async fn rename_folder(
         }
     }
 
-    // Rebuild search index for affected notes
+    // Incrementally update search index: delete old IDs, index new files.
+    // Read files first (async), then apply index updates without holding the
+    // search-index lock across an await point.
     {
+        let (ids_to_delete, ids_to_index): (Vec<String>, Vec<String>) = {
+            let cache = state.notes_cache.read().expect("cache read lock");
+            let del: Vec<String> = cache
+                .keys()
+                .filter(|id| id.starts_with(&old_prefix))
+                .cloned()
+                .collect();
+            let idx: Vec<String> = cache
+                .values()
+                .filter(|m| m.id.starts_with(&new_prefix))
+                .map(|m| m.id.clone())
+                .collect();
+            (del, idx)
+        };
+
+        let mut items = Vec::with_capacity(ids_to_index.len());
+        for new_id in &ids_to_index {
+            if let Ok(file_path) = abs_path_from_id(&folder_root, new_id) {
+                if let Ok(content) = tokio::fs::read_to_string(&file_path).await {
+                    let modified = tokio::fs::metadata(&file_path)
+                        .await
+                        .ok()
+                        .and_then(|m| m.modified().ok())
+                        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                        .map(|d| d.as_secs() as i64)
+                        .unwrap_or(0);
+                    let title = extract_title_from_id(new_id);
+                    items.push((new_id.clone(), title, content, modified));
+                }
+            }
+        }
+
         let index = state.search_index.lock().expect("search index mutex");
         if let Some(ref search_index) = *index {
-            let ignored_dirs = {
-                let settings = state.settings.read().expect("settings read lock");
-                get_effective_ignored_dirs(&settings)
-            };
-            let _ = search_index.rebuild_index(&folder_root, &ignored_dirs);
+            if !ids_to_delete.is_empty() {
+                let _ = search_index.delete_notes(ids_to_delete);
+            }
+            if !items.is_empty() {
+                let _ = search_index.index_notes(&items);
+            }
         }
     }
 
@@ -1553,15 +1647,28 @@ async fn rename_note(
         }
     }
 
-    // Rebuild search index for affected note
+    // Incrementally update search index for the renamed note (delete old, index new).
+    // Read the file first, then apply index updates without holding the lock across await.
     {
+        let mut item: Option<(String, String, i64)> = None;
+        if let Ok(content) = tokio::fs::read_to_string(&new_path).await {
+            let modified = tokio::fs::metadata(&new_path)
+                .await
+                .ok()
+                .and_then(|m| m.modified().ok())
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_secs() as i64)
+                .unwrap_or(0);
+            let title = extract_title_from_id(&new_id);
+            item = Some((title, content, modified));
+        }
+
         let index = state.search_index.lock().expect("search index mutex");
         if let Some(ref search_index) = *index {
-            let ignored_dirs = {
-                let settings = state.settings.read().expect("settings read lock");
-                get_effective_ignored_dirs(&settings)
-            };
-            let _ = search_index.rebuild_index(&folder_root, &ignored_dirs);
+            if let Some((title, content, modified)) = item {
+                let _ = search_index.delete_note(&old_id);
+                let _ = search_index.index_note(&new_id, &title, &content, modified);
+            }
         }
     }
 
@@ -1641,15 +1748,28 @@ async fn move_note(
         }
     }
 
-    // Rebuild search index
+    // Incrementally update search index for the moved note (delete old, index new).
+    // Read the file first, then apply index updates without holding the lock across await.
     {
+        let mut item: Option<(String, String, i64)> = None;
+        if let Ok(content) = tokio::fs::read_to_string(&dest_path).await {
+            let modified = tokio::fs::metadata(&dest_path)
+                .await
+                .ok()
+                .and_then(|m| m.modified().ok())
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_secs() as i64)
+                .unwrap_or(0);
+            let title = extract_title_from_id(&new_id);
+            item = Some((title, content, modified));
+        }
+
         let index = state.search_index.lock().expect("search index mutex");
         if let Some(ref search_index) = *index {
-            let ignored_dirs = {
-                let settings = state.settings.read().expect("settings read lock");
-                get_effective_ignored_dirs(&settings)
-            };
-            let _ = search_index.rebuild_index(&folder_root, &ignored_dirs);
+            if let Some((title, content, modified)) = item {
+                let _ = search_index.delete_note(&id);
+                let _ = search_index.index_note(&new_id, &title, &content, modified);
+            }
         }
     }
 
@@ -1756,15 +1876,50 @@ async fn move_folder(
         }
     }
 
-    // Rebuild search index
+    // Incrementally update search index: delete old IDs, index new files.
+    // Read files first (async), then apply index updates without holding the
+    // search-index lock across an await point.
     {
+        let (ids_to_delete, ids_to_index): (Vec<String>, Vec<String>) = {
+            let cache = state.notes_cache.read().expect("cache read lock");
+            let del: Vec<String> = cache
+                .keys()
+                .filter(|id| id.starts_with(&old_prefix))
+                .cloned()
+                .collect();
+            let idx: Vec<String> = cache
+                .values()
+                .filter(|m| m.id.starts_with(&new_prefix))
+                .map(|m| m.id.clone())
+                .collect();
+            (del, idx)
+        };
+
+        let mut items = Vec::with_capacity(ids_to_index.len());
+        for new_id in &ids_to_index {
+            if let Ok(file_path) = abs_path_from_id(&folder_root, new_id) {
+                if let Ok(content) = tokio::fs::read_to_string(&file_path).await {
+                    let modified = tokio::fs::metadata(&file_path)
+                        .await
+                        .ok()
+                        .and_then(|m| m.modified().ok())
+                        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                        .map(|d| d.as_secs() as i64)
+                        .unwrap_or(0);
+                    let title = extract_title_from_id(new_id);
+                    items.push((new_id.clone(), title, content, modified));
+                }
+            }
+        }
+
         let index = state.search_index.lock().expect("search index mutex");
         if let Some(ref search_index) = *index {
-            let ignored_dirs = {
-                let settings = state.settings.read().expect("settings read lock");
-                get_effective_ignored_dirs(&settings)
-            };
-            let _ = search_index.rebuild_index(&folder_root, &ignored_dirs);
+            if !ids_to_delete.is_empty() {
+                let _ = search_index.delete_notes(ids_to_delete);
+            }
+            if !items.is_empty() {
+                let _ = search_index.index_notes(&items);
+            }
         }
     }
 
@@ -2221,35 +2376,52 @@ fn setup_file_watcher(
                         _ => continue,
                     };
 
-                    // Update search index for external file changes
-                    if let Some(state) = app_handle.try_state::<AppState>() {
-                        let index = state.search_index.lock().expect("search index mutex");
-                        if let Some(ref search_index) = *index {
-                            match kind {
-                                "created" | "modified" => {
-                                    match std::fs::read_to_string(path) {
-                                        Ok(content) => {
-                                            let title = extract_title_from_id(&note_id);
-                                            let modified = std::fs::metadata(path)
-                                                .ok()
-                                                .and_then(|m| m.modified().ok())
-                                                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                                                .map(|d| d.as_secs() as i64)
-                                                .unwrap_or(0);
-                                            let _ = search_index.index_note(&note_id, &title, &content, modified);
-                                        }
-                                        Err(_) => {
-                                            // File gone between event and read — treat as deletion
-                                            if !path.exists() {
+                    // Update search index for external file changes. Read the file
+                    // before taking the index lock so a slow disk read doesn't hold
+                    // the shared search-index mutex.
+                    let mut index_update: Option<(String, String, i64)> = None;
+                    match kind {
+                        "created" | "modified" => {
+                            match std::fs::read_to_string(path) {
+                                Ok(content) => {
+                                    let title = extract_title_from_id(&note_id);
+                                    let modified = std::fs::metadata(path)
+                                        .ok()
+                                        .and_then(|m| m.modified().ok())
+                                        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                                        .map(|d| d.as_secs() as i64)
+                                        .unwrap_or(0);
+                                    index_update = Some((title, content, modified));
+                                }
+                                Err(_) => {
+                                    // File gone between event and read — treat as deletion
+                                    if !path.exists() {
+                                        if let Some(state) = app_handle.try_state::<AppState>() {
+                                            let index = state.search_index.lock().expect("search index mutex");
+                                            if let Some(ref search_index) = *index {
                                                 let _ = search_index.delete_note(&note_id);
                                             }
                                         }
                                     }
                                 }
-                                "deleted" => {
+                            }
+                        }
+                        "deleted" => {
+                            if let Some(state) = app_handle.try_state::<AppState>() {
+                                let index = state.search_index.lock().expect("search index mutex");
+                                if let Some(ref search_index) = *index {
                                     let _ = search_index.delete_note(&note_id);
                                 }
-                                _ => {}
+                            }
+                        }
+                        _ => {}
+                    }
+
+                    if let Some((title, content, modified)) = index_update {
+                        if let Some(state) = app_handle.try_state::<AppState>() {
+                            let index = state.search_index.lock().expect("search index mutex");
+                            if let Some(ref search_index) = *index {
+                                let _ = search_index.index_note(&note_id, &title, &content, modified);
                             }
                         }
                     }
@@ -2319,11 +2491,11 @@ fn copy_to_clipboard(app: AppHandle, text: String) -> Result<(), String> {
 
 #[tauri::command]
 async fn save_clipboard_image(
-    base64_data: String,
+    image_bytes: Vec<u8>,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
     // Guard against empty clipboard payload
-    if base64_data.trim().is_empty() {
+    if image_bytes.is_empty() {
         return Err("Clipboard data is empty".to_string());
     }
 
@@ -2334,16 +2506,6 @@ async fn save_clipboard_image(
             .clone()
             .ok_or("Notes folder not set")?
     };
-
-    // Decode base64
-    let image_data = base64::engine::general_purpose::STANDARD
-        .decode(&base64_data)
-        .map_err(|_| "Failed to decode base64 image data".to_string())?;
-
-    // Guard against zero-byte files
-    if image_data.is_empty() {
-        return Err("Decoded image data is empty".to_string());
-    }
 
     // Create assets folder path
     let assets_dir = PathBuf::from(&folder).join("assets");
@@ -2368,7 +2530,7 @@ async fn save_clipboard_image(
     }
 
     // Write the file
-    fs::write(&target_path, &image_data)
+    fs::write(&target_path, &image_bytes)
         .await
         .map_err(|_| "Failed to write image".to_string())?;
 
@@ -3805,13 +3967,13 @@ pub fn run() {
                 Settings::default()
             };
 
-            // Initialize search index if notes folder is set
+            // Initialize search index if notes folder is set. Open the persisted
+            // index immediately (no blocking rebuild), then refresh it in the
+            // background so startup is not delayed by a full vault walk.
             let ignored_dirs = get_effective_ignored_dirs(&settings);
-            let search_index = if let Some(ref folder) = app_config.notes_folder {
+            let search_index = if app_config.notes_folder.is_some() {
                 if let Ok(index_path) = get_search_index_path(app.handle()) {
-                    SearchIndex::new(&index_path).ok().inspect(|idx| {
-                        let _ = idx.rebuild_index(&PathBuf::from(folder), &ignored_dirs);
-                    })
+                    SearchIndex::new(&index_path).ok()
                 } else {
                     None
                 }
@@ -3828,6 +3990,21 @@ pub fn run() {
                 debounce_map: Arc::new(Mutex::new(HashMap::new())),
             };
             app.manage(state);
+
+            // Refresh the search index in the background so a large vault does not
+            // block the main window from appearing. The persisted index is already
+            // usable for search while this runs.
+            if let Some(folder) = app.state::<AppState>().app_config.read().expect("app_config read lock").notes_folder.clone() {
+                let handle = app.handle().clone();
+                let _ignored = ignored_dirs.clone();
+                tauri::async_runtime::spawn_blocking(move || {
+                    let state = handle.state::<AppState>();
+                    let index = state.search_index.lock().expect("search index mutex");
+                    if let Some(ref search_index) = *index {
+                        let _ = search_index.rebuild_index(&PathBuf::from(folder), &_ignored);
+                    }
+                });
+            }
 
             // Add notes folder to asset protocol scope so images can be served
             if let Some(ref folder) = app.state::<AppState>().app_config.read().expect("app_config read lock").notes_folder.clone() {

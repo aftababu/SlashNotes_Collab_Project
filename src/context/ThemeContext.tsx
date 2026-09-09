@@ -4,6 +4,7 @@ import {
   useState,
   useEffect,
   useCallback,
+  useMemo,
   type ReactNode,
 } from "react";
 import { invoke } from "@tauri-apps/api/core";
@@ -554,33 +555,61 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
     return null;
   }
 
+  // Memoize the context value so consumers don't re-render when the provider
+  // re-renders for unrelated reasons (only when an actual dependency changes).
+  const value = useMemo(
+    () => ({
+      theme,
+      resolvedTheme,
+      setTheme,
+      cycleTheme,
+      editorFontSettings,
+      setEditorFontSetting,
+      resetEditorFontSettings,
+      reloadSettings,
+      textDirection,
+      setTextDirection,
+      editorWidth,
+      setEditorWidth,
+      interfaceZoom,
+      setInterfaceZoom,
+      customEditorWidthPx,
+      setCustomEditorWidthPx,
+      setEditorMaxWidthLive,
+      customColorsLight,
+      customColorsDark,
+      setCustomColor,
+      resetCustomColor,
+      resetAllCustomColors,
+    }),
+    [
+      theme,
+      resolvedTheme,
+      setTheme,
+      cycleTheme,
+      editorFontSettings,
+      setEditorFontSetting,
+      resetEditorFontSettings,
+      reloadSettings,
+      textDirection,
+      setTextDirection,
+      editorWidth,
+      setEditorWidth,
+      interfaceZoom,
+      setInterfaceZoom,
+      customEditorWidthPx,
+      setCustomEditorWidthPx,
+      setEditorMaxWidthLive,
+      customColorsLight,
+      customColorsDark,
+      setCustomColor,
+      resetCustomColor,
+      resetAllCustomColors,
+    ],
+  );
+
   return (
-    <ThemeContext.Provider
-      value={{
-        theme,
-        resolvedTheme,
-        setTheme,
-        cycleTheme,
-        editorFontSettings,
-        setEditorFontSetting,
-        resetEditorFontSettings,
-        reloadSettings,
-        textDirection,
-        setTextDirection,
-        editorWidth,
-        setEditorWidth,
-        interfaceZoom,
-        setInterfaceZoom,
-        customEditorWidthPx,
-        setCustomEditorWidthPx,
-        setEditorMaxWidthLive,
-        customColorsLight,
-        customColorsDark,
-        setCustomColor,
-        resetCustomColor,
-        resetAllCustomColors,
-      }}
-    >
+    <ThemeContext.Provider value={value}>
       {children}
     </ThemeContext.Provider>
   );
