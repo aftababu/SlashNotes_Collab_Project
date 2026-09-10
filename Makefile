@@ -11,5 +11,5 @@ android-so:
 	cargo ndk -t aarch64-linux-android -o ./android/app/src/main/jniLibs build --release -p slash_notes_core
 
 run: bindings android-so
-	cd android && ./gradlew installDebug --no-configuration-cache
+	cd android && ./gradlew installRelease --no-configuration-cache
 	adb shell am start -n com.slashnote.app/.MainActivity

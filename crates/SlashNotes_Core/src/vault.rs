@@ -53,13 +53,16 @@ fn scan_vault(root: &Path, dir: &Path, notes: &mut Vec<CachedNoteHeader>) {
         if is_ignored_segment(&name) {
             continue;
         }
-        // Use DirEntry::file_type() instead of a separate stat syscall.
-        let Ok(file_type) = entry.file_type() else {
+        // Use a single stat call via DirEntry::metadata(). DirEntry::file_type()
+        // relies on readdir's d_type, which is unreliable on some Android
+        // SAF/FUSE filesystems (returns unknown for directories), causing
+        // subfolders to be skipped entirely.
+        let Ok(metadata) = entry.metadata() else {
             continue;
         };
-        if file_type.is_dir() {
+        if metadata.is_dir() {
             scan_vault(root, &entry_path, notes);
-        } else if file_type.is_file() {
+        } else if metadata.is_file() {
             let ext = entry_path.extension().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
             if ext != "md" && ext != "markdown" {
                 continue;
@@ -69,10 +72,8 @@ fn scan_vault(root: &Path, dir: &Path, notes: &mut Vec<CachedNoteHeader>) {
                 .map(|p| p.to_string_lossy().to_string())
                 .unwrap_or_else(|_| name.clone());
             let title = entry_path.file_stem().unwrap_or_default().to_string_lossy().to_string();
-            // Reuse the DirEntry metadata to avoid another fs::metadata call.
-            let mtime = entry
-                .metadata()
-                .and_then(|m| m.modified())
+            let mtime = metadata
+                .modified()
                 .map(|t| t.duration_since(UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0))
                 .unwrap_or(0);
             notes.push(CachedNoteHeader {

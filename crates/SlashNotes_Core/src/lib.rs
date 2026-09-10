@@ -320,7 +320,9 @@ pub fn parse_markdown_tokens(content: String) -> Vec<MarkdownSpan> {
 
 #[uniffi::export]
 pub fn list_notes(dir_path: String) -> Vec<NoteHeader> {
-    vault::get_cached_note_headers(dir_path)
+    // Force a fresh scan: this is called on vault load and explicit refresh,
+    // where the in-memory cache may be stale (e.g. external file changes).
+    vault::load_vault_index(dir_path)
         .into_iter()
         .map(|h| NoteHeader {
             id: h.relative_path.clone(),
