@@ -70,14 +70,32 @@ fun FolderTreeView(
     var draggedItem by remember { mutableStateOf<FolderItem?>(null) }
     var dropTargetFolder by remember { mutableStateOf<String?>(null) }
 
+    LaunchedEffect(notesDir) {
+        expandedPaths = emptySet()
+        childrenCache = emptyMap()
+    }
+
     val refreshFolderTree = remember(notesDir, currentRelativeDir, showAllFiles) {
         {
             scope.launch {
                 isTreeLoading = true
-                rootItems = withContext(Dispatchers.IO) {
+                val newRoot = withContext(Dispatchers.IO) {
                     listFolderContents(notesDir, currentRelativeDir, showAllFiles)
                 }
-                childrenCache = emptyMap()
+                rootItems = newRoot
+                val expandedToRefresh = expandedPaths
+                if (expandedToRefresh.isNotEmpty()) {
+                    val updatedCache = mutableMapOf<String, List<FolderItem>>()
+                    for (path in expandedToRefresh) {
+                        val kids = withContext(Dispatchers.IO) {
+                            listFolderContents(notesDir, path, showAllFiles)
+                        }
+                        updatedCache[path] = kids
+                    }
+                    childrenCache = updatedCache
+                } else {
+                    childrenCache = emptyMap()
+                }
                 isTreeLoading = false
             }
         }
@@ -98,7 +116,7 @@ fun FolderTreeView(
     }
 
     // Load children for a folder (called when expanding).
-    val loadChildren: (String) -> Unit = remember {
+    val loadChildren: (String) -> Unit = remember(notesDir, showAllFiles) {
         { folderPath ->
             scope.launch {
                 val kids = withContext(Dispatchers.IO) {
@@ -288,7 +306,7 @@ fun FolderTreeView(
                         isHoveredTarget = item.isDir && dropTargetFolder == item.relativePath,
                         draggedItem = draggedItem,
                         onToggleExpand = { path ->
-                            if (expandedPaths.contains(path)) {
+                            if (expandedPaths.contains(path) && childrenCache[path] != null) {
                                 expandedPaths = expandedPaths - path
                                 childrenCache = childrenCache - path
                             } else {

@@ -19,6 +19,7 @@ rm -rf dist build out target/release/bundle
 
 echo "=== 2. Building Desktop Frontend & Tauri Release ==="
 pnpm build
+export NO_STRIP=1
 pnpm tauri build
 
 echo "=== 3. Building Android Release APK ==="

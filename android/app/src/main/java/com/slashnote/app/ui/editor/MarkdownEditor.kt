@@ -241,8 +241,7 @@ fun MarkdownEditor(
         }
     }
 
-    val isDarkTheme = isSystemInDarkTheme()
-    val cursorHandleColor = if (isDarkTheme) StitchAccentCoral else Color.Black
+    val cursorHandleColor = MaterialTheme.colorScheme.primary
 
     Box(
         modifier = modifier

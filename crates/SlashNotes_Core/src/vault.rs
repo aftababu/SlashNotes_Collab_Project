@@ -343,7 +343,10 @@ pub(crate) fn list_folder_contents_inner(base: &Path, relative_dir: &str, show_a
                 format!("{}/{}", relative_dir.trim_matches('/'), name)
             };
 
-            let is_dir = entry_path.is_dir();
+            let Ok(metadata) = entry.metadata() else {
+                continue;
+            };
+            let is_dir = metadata.is_dir();
             let ext = entry_path.extension().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
             let is_md = ext == "md" || ext == "markdown";
 
