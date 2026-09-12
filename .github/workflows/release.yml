@@ -10,69 +10,206 @@ permissions:
   contents: write
 
 jobs:
-  build-and-release:
+  # ============================================================
+  # DESKTOP RELEASES
+  # ============================================================
+  build-desktop:
+    name: Build ${{ matrix.name }}
+
     strategy:
       fail-fast: false
       matrix:
         include:
-          - platform: macos-latest
-            args: "--target universal-apple-darwin"
-            rust_targets: "aarch64-apple-darwin,x86_64-apple-darwin"
-          - platform: ubuntu-22.04
+          # ------------------------------------------------------
+          # Linux
+          # ------------------------------------------------------
+          - name: Linux x86_64
+            platform: ubuntu-22.04
             args: ""
             rust_targets: ""
-          - platform: windows-latest
+
+          # ------------------------------------------------------
+          # Windows
+          # ------------------------------------------------------
+          - name: Windows x86_64
+            platform: windows-latest
             args: ""
             rust_targets: ""
+
+          # ------------------------------------------------------
+          # macOS Intel
+          # ------------------------------------------------------
+          - name: macOS x86_64
+            platform: macos-latest
+            args: "--target x86_64-apple-darwin"
+            rust_targets: "x86_64-apple-darwin"
 
     runs-on: ${{ matrix.platform }}
 
     steps:
-      - uses: actions/checkout@v4
+      # ----------------------------------------------------------
+      # Checkout
+      # ----------------------------------------------------------
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Install system dependencies (Ubuntu only)
+      # ----------------------------------------------------------
+      # Linux dependencies
+      # ----------------------------------------------------------
+      - name: Install system dependencies
         if: matrix.platform == 'ubuntu-22.04'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev \
-            libappindicator3-dev librsvg2-dev patchelf
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf
 
+      # ----------------------------------------------------------
+      # Node
+      # ----------------------------------------------------------
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: lts/*
           cache: npm
 
+      # ----------------------------------------------------------
+      # Rust
+      # ----------------------------------------------------------
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.rust_targets }}
 
+      # ----------------------------------------------------------
+      # Rust cache
+      # ----------------------------------------------------------
       - name: Rust cache
         uses: swatinem/rust-cache@v2
         with:
           workspaces: ./src-tauri -> target
 
+      # ----------------------------------------------------------
+      # Frontend
+      # ----------------------------------------------------------
       - name: Install frontend dependencies
         run: npm ci
 
+      # ----------------------------------------------------------
+      # Tauri build + GitHub release
+      # ----------------------------------------------------------
       - name: Build and release
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+          # Apple signing
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+          # Tauri updater signing
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
         with:
           tagName: v__VERSION__
           releaseName: "SlashNote v__VERSION__"
-          releaseBody: "See the release page for full details. Download the app for your platform below."
+
+          releaseBody: |
+            ## SlashNote v__VERSION__
+
+            Cross-platform release for Linux, Windows, and macOS.
+
+            Android packages are included in the release assets.
+
           releaseDraft: true
           prerelease: false
           updaterJsonPreferNsis: true
+
           args: ${{ matrix.args }}
+
+
+  # ============================================================
+  # ANDROID RELEASE
+  # ============================================================
+  build-android:
+    name: Build Android
+
+    runs-on: ubuntu-22.04
+
+    steps:
+      # ----------------------------------------------------------
+      # Checkout
+      # ----------------------------------------------------------
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ----------------------------------------------------------
+      # Java
+      # ----------------------------------------------------------
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      # ----------------------------------------------------------
+      # Node
+      # ----------------------------------------------------------
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+
+      # ----------------------------------------------------------
+      # Rust
+      # ----------------------------------------------------------
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      # ----------------------------------------------------------
+      # Rust cache
+      # ----------------------------------------------------------
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: ./src-tauri -> target
+
+      # ----------------------------------------------------------
+      # Android SDK
+      # ----------------------------------------------------------
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        run: |
+          sdkmanager "platform-tools"
+          sdkmanager "platforms;android-35"
+          sdkmanager "build-tools;35.0.0"
+          sdkmanager "ndk;27.2.12479018"
+
+      # ----------------------------------------------------------
+      # Frontend
+      # ----------------------------------------------------------
+      - name: Install frontend dependencies
+        run: npm ci
+
+      # ----------------------------------------------------------
+      # Initialize Tauri Android
+      # ----------------------------------------------------------
+      - name: Initialize Android project
+        run: npx tauri android init
+
+      # ----------------------------------------------------------
+      # Build Android
+      # ----------------------------------------------------------
+      - name: Build Android APKs
+        run: |
+          npx tauri android build
