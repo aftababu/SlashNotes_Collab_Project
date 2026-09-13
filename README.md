@@ -66,3 +66,18 @@ SlashNote is a distraction-free, local-first Markdown workspace engineered for d
 │  • Tailwind CSS           │       │  • Multi-Arch (ARM/x86)   │
 └───────────────────────────┘       └───────────────────────────┘
 ```
+
+
+---
+
+## 📜 Attribution & License
+
+SlashNote is released under the [MIT License](./LICENSE).
+
+The Desktop client contains code derived from and substantially modified from
+[Scratch](https://github.com/erictli/scratch), an MIT-licensed open-source project.
+
+The Android client was independently developed for SlashNote.
+
+See [THIRD-PARTY-NOTICES.md](./THIRD-PARTY-NOTICES.md) for additional
+attribution and third-party licensing information.
