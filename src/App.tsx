@@ -429,6 +429,7 @@ function AppContent() {
 
   const handleClosePalette = useCallback(() => {
     setPaletteOpen(false);
+    editorRef.current?.commands.focus();
   }, []);
 
   if (isLoading) {
