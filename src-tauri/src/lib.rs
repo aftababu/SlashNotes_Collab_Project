@@ -2383,7 +2383,7 @@ async fn copy_image_to_assets(
 }
 
 #[tauri::command]
-fn rebuild_search_index(app: AppHandle, state: State<AppState>) -> Result<(), String> {
+fn rebuild_search_index(state: State<AppState>) -> Result<(), String> {
     let folder = {
         let app_config = state.app_config.read().expect("app_config read lock");
         app_config
@@ -2392,22 +2392,18 @@ fn rebuild_search_index(app: AppHandle, state: State<AppState>) -> Result<(), St
             .ok_or("Notes folder not set")?
     };
 
-    let index_path = get_search_index_path(&app).map_err(|e| e.to_string())?;
-
-    // Create new index
     let ignored_dirs = {
         let settings = state.settings.read().expect("settings read lock");
         get_effective_ignored_dirs(&settings)
     };
-    let search_index = SearchIndex::new(&index_path).map_err(|e| e.to_string())?;
-    search_index
-        .rebuild_index(&PathBuf::from(&folder), &ignored_dirs)
-        .map_err(|e| e.to_string())?;
 
-    let mut index = state.search_index.lock().expect("search index mutex");
-    *index = Some(search_index);
-
-    Ok(())
+    let index = state.search_index.lock().expect("search index mutex");
+    match index.as_ref() {
+        Some(search_index) => search_index
+            .rebuild_index(&PathBuf::from(&folder), &ignored_dirs)
+            .map_err(|e| e.to_string()),
+        None => Err("Search index not initialized".to_string()),
+    }
 }
 
 #[tauri::command]
