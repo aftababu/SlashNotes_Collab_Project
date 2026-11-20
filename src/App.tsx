@@ -279,9 +279,16 @@ function AppContent() {
       }
 
       // Cmd+P - Open command palette
-      if ((e.metaKey || e.ctrlKey) && e.key === "p") {
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key === "p") {
         e.preventDefault();
         setPaletteOpen(true);
+        return;
+      }
+
+      // Cmd+Shift+P - Print
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "p") {
+        e.preventDefault();
+        window.dispatchEvent(new CustomEvent("print-note"));
         return;
       }
 
@@ -464,6 +471,7 @@ function AppContent() {
         ) : (
           <>
             <div
+              data-sidebar
               className={`transition-all duration-500 ease-out overflow-hidden ${!sidebarVisible || focusMode ? "opacity-0 -translate-x-4 w-0 pointer-events-none" : "opacity-100 translate-x-0 w-64"}`}
             >
               <Sidebar onOpenSettings={toggleSettings} />

@@ -1856,13 +1856,18 @@ export function Editor({
     if (!editor || !currentNote) return;
     try {
       await downloadPdf(editor, currentNote.title);
-      // Note: window.print() opens the print dialog but doesn't wait for user action
-      // No success toast needed - the print dialog provides its own feedback
     } catch (error) {
       console.error("Failed to open print dialog:", error);
       toast.error("Failed to open print dialog");
     }
   }, [editor, currentNote]);
+
+  // Listen for Cmd+P print shortcut
+  useEffect(() => {
+    const handler = () => handleDownloadPdf();
+    window.addEventListener("print-note", handler);
+    return () => window.removeEventListener("print-note", handler);
+  }, [handleDownloadPdf]);
 
   const handleDownloadMarkdown = useCallback(async () => {
     if (!editor || !currentNote) return;
@@ -2354,6 +2359,7 @@ export function Editor({
 
       {/* Format Bar – transition only after initial mount to avoid height animation on note load */}
       <div
+        data-format-bar
         className={`${focusMode || sourceMode ? "opacity-0 max-h-0 overflow-hidden pointer-events-none" : "opacity-100 max-h-20"} ${hasTransitioned ? `transition-all duration-400 ${needsSidebarDelay ? "delay-200" : ""}` : ""}`}
       >
         <FormatBar
@@ -2365,11 +2371,12 @@ export function Editor({
       </div>
 
       {/* Editor content area with resize handles overlay */}
-      <div className="flex-1 relative overflow-hidden">
+      <div data-editor-content-area className="flex-1 relative overflow-hidden">
         {!focusMode && !sourceMode && (
           <EditorWidthHandles containerRef={scrollContainerRef} />
         )}
         <div
+          data-editor-scroll
           ref={scrollContainerRef}
           className="absolute inset-0 overflow-y-auto overflow-x-hidden"
           dir={textDirection}
