@@ -128,6 +128,10 @@ pub struct Settings {
     pub folders_enabled: Option<bool>,
     #[serde(rename = "ignoredPatterns")]
     pub ignored_patterns: Option<Vec<String>>,
+    #[serde(rename = "customColorsLight")]
+    pub custom_colors_light: Option<std::collections::HashMap<String, String>>,
+    #[serde(rename = "customColorsDark")]
+    pub custom_colors_dark: Option<std::collections::HashMap<String, String>>,
 }
 
 // Search result
